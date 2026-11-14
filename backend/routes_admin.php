@@ -53,6 +53,7 @@ route('GET', '/admin/notifications', function () {
     if ($k = (int) val("SELECT COUNT(*) FROM users WHERE role='customer' AND kyc_status='submitted'")) $n[] = ['text' => "$k KYC submission(s) to verify", 'href' => '/admin/customers?kyc=submitted'];
     if ($k = (int) val("SELECT COUNT(*) FROM weight_disputes WHERE status='disputed' AND delhivery_dispute IS NULL")) $n[] = ['text' => "$k dispute(s) to forward to Delhivery", 'href' => '/admin/disputes'];
     if ($k = (int) val("SELECT COUNT(*) FROM tickets WHERE status='open'")) $n[] = ['text' => "$k open support ticket(s)", 'href' => '/admin/support'];
+    if ($k = (int) val("SELECT COUNT(*) FROM complaints WHERE status='open'")) $n[] = ['text' => "$k new customer-care complaint(s)", 'href' => '/admin/support'];
     if ($k = (int) val("SELECT COUNT(*) FROM api_logs WHERE result='failed' AND created_at >= CURDATE()")) $n[] = ['text' => "$k Delhivery API error(s) today", 'href' => '/admin/delhivery'];
     return ['items' => $n];
 });
@@ -89,6 +90,7 @@ route('GET', '/admin/customers/(\d+)', function ($id) {
     $u['pickups'] = all("SELECT * FROM pickup_addresses WHERE user_id=?", [$id]);
     $u['txns'] = all("SELECT * FROM wallet_txns WHERE user_id=? ORDER BY id DESC LIMIT 50", [$id]);
     $u['stats'] = status_counts('user_id=? AND is_draft=0', [$id]);
+    $u['activity'] = all("SELECT a.*, s.name actor FROM activity_logs a LEFT JOIN users s ON s.id=a.actor_id WHERE a.user_id=? ORDER BY a.id DESC LIMIT 60", [$id]);
     return $u;
 });
 function customer_payload(bool $create): array {
@@ -293,7 +295,8 @@ route('GET', '/admin/ndr', function () {
 route('GET', '/admin/cod', function () {
     require_admin('wallet');
     return [
-        'pending' => all("SELECT u.id user_id, COALESCE(u.business_name,u.name) customer, u.bank_name, u.bank_account, u.cod_cycle,
+        'early_fee_pct' => (float) setting('early_cod_fee_pct', 1),
+        'pending' => all("SELECT u.id user_id, COALESCE(u.business_name,u.name) customer, u.bank_name, u.bank_account, u.cod_cycle, u.early_cod,
             SUM(s.cod_amount) collected, SUM(CASE WHEN s.cod_status='received' THEN s.cod_amount ELSE 0 END) received, COUNT(*) n
             FROM shipments s JOIN users u ON u.id=s.user_id WHERE s.cod_status IN ('pending','received') GROUP BY u.id ORDER BY collected DESC"),
         'remittances' => all("SELECT r.*, COALESCE(u.business_name,u.name) customer FROM cod_remittances r JOIN users u ON u.id=r.user_id ORDER BY r.id DESC LIMIT 100"),
@@ -313,10 +316,13 @@ route('POST', '/admin/cod/remit', function () {
     $uid = (int) req('user_id');
     $rows = all("SELECT id, cod_amount FROM shipments WHERE user_id=? AND cod_status IN ('pending','received')", [$uid]);
     if (!$rows) fail('Nothing to remit');
-    $amt = array_sum(array_column($rows, 'cod_amount'));
+    $gross = array_sum(array_column($rows, 'cod_amount'));
+    $early = (int) val("SELECT early_cod FROM users WHERE id=?", [$uid]);
+    $fee = $early ? round($gross * (float) setting('early_cod_fee_pct', 1) / 100, 2) : 0;
+    $amt = $gross - $fee;
     $toWallet = (bool) in('to_wallet');
     db()->beginTransaction();
-    $rid = insert('cod_remittances', ['user_id' => $uid, 'amount' => $amt, 'shipments' => count($rows), 'utr' => in('utr') ?: ($toWallet ? 'WALLET' : null), 'status' => 'paid', 'remit_date' => date('Y-m-d')]);
+    $rid = insert('cod_remittances', ['user_id' => $uid, 'amount' => $amt, 'gross' => $gross, 'fee' => $fee, 'shipments' => count($rows), 'utr' => in('utr') ?: ($toWallet ? 'WALLET' : null), 'status' => 'paid', 'remit_date' => date('Y-m-d')]);
     q("UPDATE shipments SET cod_status='remitted', remittance_id=? WHERE id IN (" . implode(',', array_column($rows, 'id')) . ")", [$rid]);
     if ($toWallet) wallet_txn($uid, 'credit', $amt, 'COD remittance adjusted', 'COD' . $rid, 'cod');
     db()->commit();
@@ -463,7 +469,7 @@ route('PUT', '/admin/content', function () {
     return ['ok' => true];
 });
 const GENERAL_KEYS = ['company_name', 'company_gstin', 'company_address', 'invoice_prefix', 'require_kyc', 'min_recharge', 'low_wallet_threshold', 'pickup_slots',
-    'payment_gateway', 'razorpay_key_id', 'gst_pct'];
+    'payment_gateway', 'razorpay_key_id', 'gst_pct', 'early_cod_fee_pct', 'early_cod_cycle', 'notif_credit_price', 'notif_provider_enabled', 'notif_provider_name', 'cod_confirm_enabled'];
 route('GET', '/admin/settings', function () {
     require_admin('content');
     $s = array_intersect_key(settings(), array_flip(GENERAL_KEYS));
@@ -483,6 +489,7 @@ route('GET', '/admin/support', function () {
     return [
         'tickets' => all("SELECT t.*, COALESCE(u.business_name,u.name) customer, s.awb FROM tickets t JOIN users u ON u.id=t.user_id LEFT JOIN shipments s ON s.id=t.shipment_id ORDER BY t.status='closed', t.id DESC LIMIT 200"),
         'enquiries' => all("SELECT * FROM enquiries ORDER BY id DESC LIMIT 200"),
+        'deletions' => all("SELECT id, name, business_name, email, mobile, wallet_balance, deletion_requested_at, deletion_reason FROM users WHERE deletion_requested_at IS NOT NULL ORDER BY deletion_requested_at DESC"),
     ];
 });
 route('POST', '/admin/tickets/(\d+)', function ($id) {
@@ -505,4 +512,34 @@ route('POST', '/admin/demo/clear', function () {
     }
     q("DELETE FROM api_logs");
     return ['ok' => true, 'removed' => count($ids)];
+});
+
+// ---------- Shipmozo + provider switches ----------
+route('GET', '/admin/shipmozo', function () {
+    require_admin('delhivery');
+    $pk = setting('shipmozo_private_key', '');
+    return ['enabled' => setting('shipmozo_enabled') === '1', 'public_key' => setting('shipmozo_public_key'), 'private_masked' => $pk ? str_repeat('•', 12) . substr($pk, -4) : '',
+        'has_private' => $pk !== '', 'base' => setting('shipmozo_base'), 'warehouse_id' => setting('shipmozo_warehouse_id'), 'package_type' => setting('shipmozo_package_type'),
+        'rov_type' => setting('shipmozo_rov_type'), 'max_options' => setting('shipmozo_max_options'), 'schedule_pickup' => setting('shipmozo_schedule_pickup'),
+        'delhivery_enabled' => setting('delhivery_enabled', '1') === '1', 'live' => shipmozo_on(),
+        'shipments' => (int) val("SELECT COUNT(*) FROM shipments WHERE provider='shipmozo'")];
+});
+route('PUT', '/admin/shipmozo', function () {
+    require_admin('delhivery');
+    foreach (['enabled' => 'shipmozo_enabled', 'public_key' => 'shipmozo_public_key', 'base' => 'shipmozo_base', 'warehouse_id' => 'shipmozo_warehouse_id', 'package_type' => 'shipmozo_package_type',
+        'rov_type' => 'shipmozo_rov_type', 'max_options' => 'shipmozo_max_options', 'schedule_pickup' => 'shipmozo_schedule_pickup', 'delhivery_enabled' => 'delhivery_enabled'] as $in => $k) {
+        $v = in($in);
+        if ($v === null) continue;
+        if (is_bool($v)) $v = $v ? '1' : '0';
+        set_setting($k, is_string($v) ? trim($v) : $v);
+    }
+    if (in('private_key')) set_setting('shipmozo_private_key', trim((string) in('private_key')));
+    if (in('clear_keys')) { set_setting('shipmozo_private_key', ''); set_setting('shipmozo_public_key', ''); set_setting('shipmozo_enabled', '0'); }
+    return ['ok' => true];
+});
+route('POST', '/admin/shipmozo/test', function () { require_admin('delhivery'); return shipmozo_test(); });
+route('POST', '/admin/quote-preview', function () {
+    require_admin();
+    $u = in('customer_id') ? one("SELECT * FROM users WHERE id=?", [(int) in('customer_id')]) : null;
+    return quote((string) req('from'), (string) req('to'), (float) req('weight'), in('l', 10), in('b', 10), in('h', 10), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u);
 });

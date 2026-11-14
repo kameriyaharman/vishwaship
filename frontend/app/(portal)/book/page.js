@@ -41,6 +41,7 @@ export default function Book() {
   const [done, setDone] = useState(null);
   const [draftId, setDraftId] = useState(null);
   const [pickPicker, setPickPicker] = useState(false);
+  const [manualSvc, setManualSvc] = useState(false);
   const qTimer = useRef(null);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
 
@@ -78,7 +79,16 @@ export default function Book() {
         setQErr('');
         const q = await api('/me/quote', { method: 'POST', body: { from: pickup.pincode, to: f.to_pincode, weight: +f.weight, l: +f.length || 0, b: +f.breadth || 0, h: +f.height || 0, payment: f.payment_mode, cod_amount: +f.cod_amount || +f.invoice_value || 0 } });
         setQuote(q);
-        if (!q.options.find((o) => o.service === f.service) && q.options[0]) setF((x) => ({ ...x, service: q.options[0].service }));
+        if (!manualSvc && q.options.length) {
+          const a = me.prefs?.auto_assign || {};
+          let rule = a.default || 'cheapest';
+          if (f.payment_mode === 'cod' && a.cod) rule = a.cod;
+          if (a.heavy && +f.weight > +(a.heavy_kg || 0)) rule = a.heavy;
+          const pick = rule === 'cheapest' ? [...q.options].sort((x, y) => x.total - y.total)[0]
+            : rule === 'fastest' ? (q.options.find((o) => o.service === 'express') || q.options[0])
+              : (q.options.find((o) => o.service === rule) || q.options[0]);
+          if (pick && pick.service !== f.service) setF((x) => ({ ...x, service: pick.service }));
+        } else if (!q.options.find((o) => o.service === f.service) && q.options[0]) setF((x) => ({ ...x, service: q.options[0].service }));
       } catch (e) { setQErr(e.message); setQuote(null); }
     }, 350);
   }, [step, pickup, f.weight, f.length, f.breadth, f.height, f.payment_mode, f.cod_amount, f.invoice_value, f.to_pincode, f.service]);
@@ -190,14 +200,14 @@ export default function Book() {
               {!quote ? <p className="muted small">Enter weight to see the final rate.</p> : (
                 <>
                   {quote.options.map((o) => (
-                    <div key={o.service} className={'opt' + (f.service === o.service ? ' on' : '')} onClick={() => setF({ ...f, service: o.service })}>
+                    <div key={o.service} className={'opt' + (f.service === o.service ? ' on' : '')} onClick={() => { setManualSvc(true); setF({ ...f, service: o.service }); }}>
                       <span className="radio" /><div><div className="b">{o.name}</div><div className="tiny muted">{o.days} · ETA {dLong(o.eta).slice(4, 10)}</div></div>
                       <span className="price">{inr(o.freight + o.cod_charge)}</span>
                     </div>
                   ))}
                   {opt && (
                     <div className="mt12">
-                      <div className="kv"><span>Freight ({f.service === 'express' ? 'Express' : 'Surface'}, {kg(quote.chargeable_weight)})</span><b>{inr(opt.freight, 2)}</b></div>
+                      <div className="kv"><span>Freight ({opt.name}, {kg(quote.chargeable_weight)})</span><b>{inr(opt.freight, 2)}</b></div>
                       <div className="kv"><span>COD charges</span><b>{opt.cod_charge ? inr(opt.cod_charge, 2) : '—'}</b></div>
                       <div className="kv"><span>GST {quote.gst_pct}%</span><b>{inr(opt.gst, 2)}</b></div>
                       <div className="row between mt12"><b style={{ fontSize: 20 }}>Total payable</b><b style={{ fontSize: 22 }}>{inr(opt.total, 2)}</b></div>
@@ -224,7 +234,7 @@ export default function Book() {
             <div className="mono orange" style={{ fontSize: 30, margin: '4px 0' }}>{done.awb}</div>
             <div className="tiny muted">Delhivery waybill · Order #{done.order_no}</div>
             <div className="grid4 mt16" style={{ gap: 8 }}>
-              {[['Pickup', `${done.pickup_date === today() ? 'Today' : dLong(done.pickup_date).slice(4, 10)} ${done.pickup_slot}`], ['Service', done.service === 'express' ? 'Express' : 'Surface'], ['Charged', inr(done.total, 2)], ['ETA', dLong(done.eta).slice(4, 10)]].map(([a, b]) => (
+              {[['Pickup', `${done.pickup_date === today() ? 'Today' : dLong(done.pickup_date).slice(4, 10)} ${done.pickup_slot}`], ['Courier', done.courier_name || (done.service === 'express' ? 'Express' : 'Surface')], ['Charged', inr(done.total, 2)], ['ETA', dLong(done.eta).slice(4, 10)]].map(([a, b]) => (
                 <div key={a} className="note"><div className="tiny muted">{a}</div><b className="small">{b}</b></div>
               ))}
             </div>

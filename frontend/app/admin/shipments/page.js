@@ -41,7 +41,7 @@ export default function AllShipments() {
       <div className="card p0 tbl-wrap">
         {!d ? <Spinner /> : (
           <table className="tbl">
-            <thead><tr><th style={{ width: 30 }}><input type="checkbox" checked={sel.length > 0 && sel.length === d.items.length} onChange={(e) => setSel(e.target.checked ? d.items.map((x) => x.id) : [])} /></th><th>AWB</th><th>Customer</th><th>Route</th><th className="hide-md">Weight</th><th>Mode</th><th className="num">Delhivery base</th><th className="num">Final (customer)</th><th className="num">Margin</th><th>Status</th></tr></thead>
+            <thead><tr><th style={{ width: 30 }}><input type="checkbox" checked={sel.length > 0 && sel.length === d.items.length} onChange={(e) => setSel(e.target.checked ? d.items.map((x) => x.id) : [])} /></th><th>AWB</th><th>Customer</th><th>Route</th><th className="hide-md">Weight</th><th>Mode</th><th className="hide-md">Courier</th><th className="num">API price</th><th className="num">Final (customer)</th><th className="num">Commission</th><th>Status</th></tr></thead>
             <tbody>
               {d.items.map((s) => {
                 const base = +s.base_rate + +s.cod_base; const fin = +s.freight + +s.cod_charge;
@@ -50,7 +50,7 @@ export default function AllShipments() {
                     <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.includes(s.id)} onChange={(e) => setSel(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} /></td>
                     <td className="mono">{s.awb}</td><td>{s.business_name || s.cname}</td><td>{s.from_city} → {s.to_city}</td><td className="hide-md">{kg(s.chargeable_weight)}</td>
                     <td><Chip s={s.payment_mode} label={s.payment_mode === 'cod' ? 'COD' : 'Prepaid'} /></td>
-                    <td className="num">{inr(base)}</td><td className="num">{inr(fin)}</td><td className="num green b">{inr(fin - base)}</td>
+                    <td className="hide-md small">{s.courier_name || 'Delhivery ' + s.service}</td><td className="num">{inr(base)}</td><td className="num">{inr(fin)}</td><td className="num green b">{inr(fin - base)}</td>
                     <td><Chip s={s.status_key} label={s.status_label} /></td>
                   </tr>
                 );
@@ -63,9 +63,9 @@ export default function AllShipments() {
       {sum && (
         <div className="card mt12 row wrap" style={{ gap: 30, padding: '12px 18px' }}>
           <span className="small">Selected filter: <b>{(+sum.n).toLocaleString('en-IN')} shipments</b></span>
-          <span className="small">Delhivery base: <b>{lakh(sum.base)}</b></span>
+          <span className="small">Courier API price: <b>{lakh(sum.base)}</b></span>
           <span className="small">Customer final: <b>{lakh(sum.final)}</b></span>
-          <span className="small green">Margin: <b>{lakh(sum.final - sum.base)}</b></span>
+          <span className="small green">Commission earned: <b>{lakh(sum.final - sum.base)}</b></span>
           <span className="grow" />
           {d.total > 50 && <span className="row"><button className="btn btn-outline btn-sm" disabled={page === 1 || loading} onClick={() => setPage(page - 1)}>←</button><span className="small">Page {page} / {Math.ceil(d.total / 50)}</span><button className="btn btn-outline btn-sm" disabled={page * 50 >= d.total || loading} onClick={() => setPage(page + 1)}>→</button></span>}
         </div>

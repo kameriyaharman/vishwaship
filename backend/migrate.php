@@ -98,11 +98,94 @@ function migrate(): void {
     ];
     foreach ($stmts as $s) $pdo->exec($s);
 
+    // v6: multi-provider (Delhivery + Shipmozo)
+    foreach (['provider' => "VARCHAR(20) NOT NULL DEFAULT 'delhivery'", 'courier_name' => 'VARCHAR(80) NULL', 'courier_id' => 'VARCHAR(40) NULL', 'provider_order_id' => 'VARCHAR(60) NULL'] as $c => $def)
+        if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND COLUMN_NAME=?", [$c])) $pdo->exec("ALTER TABLE shipments ADD COLUMN `$c` $def");
+    if (val("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND COLUMN_NAME='service'") === 'enum') $pdo->exec("ALTER TABLE shipments MODIFY service VARCHAR(40) NOT NULL DEFAULT 'surface'");
+    foreach (['shipmozo_enabled' => '0', 'shipmozo_public_key' => '', 'shipmozo_private_key' => '', 'shipmozo_base' => 'https://shipping-api.com/app/api/v1', 'shipmozo_warehouse_id' => '',
+        'shipmozo_package_type' => 'SPS', 'shipmozo_rov_type' => 'ROV_OWNER', 'shipmozo_max_options' => '4', 'shipmozo_schedule_pickup' => 'auto', 'delhivery_enabled' => '1'] as $k => $v)
+        q("INSERT IGNORE INTO settings (k,v) VALUES (?,?)", [$k, $v]);
+    // v5: customer care complaints
+    $pdo->exec("CREATE TABLE IF NOT EXISTS complaints (id INT AUTO_INCREMENT PRIMARY KEY, ticket_no VARCHAR(20) NOT NULL UNIQUE, user_id INT NULL, name VARCHAR(120), mobile VARCHAR(20), email VARCHAR(160),
+        category VARCHAR(60), awb VARCHAR(40), courier VARCHAR(80), subject VARCHAR(200), message TEXT, file_id INT NULL,
+        status ENUM('open','in_progress','resolved','closed') NOT NULL DEFAULT 'open', reply TEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, INDEX(email)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // v4 additions
+    $pdo->exec("CREATE TABLE IF NOT EXISTS activity_logs (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, actor_id INT NULL, action VARCHAR(80), detail VARCHAR(255), ip VARCHAR(45), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX(user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS notification_credits (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, type ENUM('credit','debit') NOT NULL, credits INT NOT NULL, balance_after INT NOT NULL, description VARCHAR(255), created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX(user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach ([
+        'users' => ['prefs' => 'MEDIUMTEXT NULL', 'api_key' => 'VARCHAR(64) NULL', 'token_version' => 'INT NOT NULL DEFAULT 0', 'early_cod' => 'TINYINT NOT NULL DEFAULT 0',
+            'notif_credits' => 'INT NOT NULL DEFAULT 0', 'deletion_requested_at' => 'DATETIME NULL', 'deletion_reason' => 'VARCHAR(255) NULL', 'address' => 'VARCHAR(255) NULL',
+            'state' => 'VARCHAR(80) NULL', 'pincode' => 'VARCHAR(6) NULL', 'brand_logo_id' => 'INT NULL'],
+        'cod_remittances' => ['gross' => 'DECIMAL(12,2) NULL', 'fee' => 'DECIMAL(12,2) NOT NULL DEFAULT 0'],
+    ] as $t => $cols) foreach ($cols as $c => $def) {
+        if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?", [$t, $c])) $pdo->exec("ALTER TABLE `$t` ADD COLUMN `$c` $def");
+    }
+    foreach (['early_cod_fee_pct' => '1', 'early_cod_cycle' => 'D+2 (2 days after delivery)', 'notif_credit_price' => '0.25', 'notif_provider_enabled' => '0',
+        'notif_provider_name' => '', 'cod_confirm_enabled' => '0'] as $k => $v) q("INSERT IGNORE INTO settings (k,v) VALUES (?,?)", [$k, $v]);
+    $c = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
+    if (is_array($c) && !isset($c['hero_image'])) $c = array_merge($c, v4_content());
+    if (is_array($c) && !isset($c['care_title'])) { $c = array_merge($c, v5_content()); set_setting('content', $c); }
+    elseif (is_array($c)) set_setting('content', $c);
     if (!val("SELECT COUNT(*) FROM settings WHERE k='installed'")) seed_defaults();
 }
 
-function default_content(): array {
+function v4_content(): array {
     return [
+        'topbar_text' => 'From your doorstep. To anywhere in India.', 'franchise_label' => 'Franchise Login', 'franchise_url' => '/login/?admin=1',
+        'hero_eyebrow' => 'YOUR PAN-INDIA SHIPPING PARTNER', 'hero_h1_a' => 'Big or small.', 'hero_h1_b' => 'We ship it', 'hero_h1_c' => 'all.',
+        'hero_text' => 'From everyday parcels to heavy cargo, we bring reliable shipping right to your doorstep. Anywhere in India.',
+        'hero_checks' => ['Doorstep pickup', 'Pan-India delivery', 'Easy online booking'],
+        'hero_image' => 'https://images.hostinger.com/b08546a2-b494-4b70-9362-857680ba26f0/9dd28a09-6c70-44f6-baf7-66b043399bbe.png',
+        'hero_badge_1' => 'Picked up. On its way.', 'hero_badge_2' => 'Shipping made simple.',
+        'hero_tag_1' => 'Connecting India, doorstep to doorstep', 'hero_tag_2' => 'Handled with care. Delivered with confidence.',
+        'track_title' => 'Where’s your shipment?', 'track_text' => 'Enter your AWB number to see live status — or log in to see all your shipments.',
+        'partners_eyebrow' => 'ONE PLATFORM. A WORLD OF COURIER CHOICES.', 'partners' => ['Delhivery', 'Blue Dart Express', 'DTDC', 'Xpressbees', 'Ecom Express', 'Ekart Logistics'],
+        'partners_note' => 'Carrier allocation depends on serviceability and availability.',
+        'services_eyebrow' => 'BUILT FOR EVERY SHIPMENT', 'services_title_1' => 'Your shipping needs.', 'services_title_2' => 'Our complete solutions.',
+        'service_cards' => [
+            ['t' => 'Doorstep Courier', 'd' => 'Documents and parcels picked up from your door and delivered across India.', 'cta' => 'Send a parcel', 'icon' => 'box'],
+            ['t' => 'Cargo Shipping', 'd' => 'Heavy and bulk consignments moved safely with surface cargo options.', 'cta' => 'Ship your cargo', 'icon' => 'truck'],
+            ['t' => 'Express Delivery', 'd' => 'When your shipment needs priority, choose express shipping to serviceable destinations.', 'cta' => 'Choose express', 'icon' => 'bolt'],
+        ],
+        'how_eyebrow' => 'LESS EFFORT. MORE MOVEMENT.', 'how_title_1' => 'From your door to theirs.', 'how_title_2' => 'In three simple steps.',
+        'how_steps' => [
+            ['k' => '01 / BOOK ONLINE', 't' => 'Tell us what’s shipping', 'd' => 'Choose a service and add your pickup and delivery details.'],
+            ['k' => '02 / WE PICK IT UP', 't' => 'Leave the trip to us', 'd' => 'Pack your shipment securely. We coordinate a convenient doorstep pickup.'],
+            ['k' => '03 / TRACK & RELAX', 't' => 'Follow every milestone', 'd' => 'Once dispatched, use your AWB number to check shipment updates.'],
+        ],
+        'cta_eyebrow' => 'YOUR NEXT DELIVERY STARTS HERE', 'cta_title' => 'Ready, set, ship.', 'cta_text' => 'Small parcel or big plans. Let’s get them moving.', 'cta_button' => 'Book your shipment',
+        'footer_tag_1' => 'Your parcels. Our promise.', 'footer_tag_2' => 'Doorstep shipping, across India.',
+        'privacy_text' => "We collect only the details needed to book, ship and support your orders (name, contact, addresses, KYC and payment records).\nShipment details are shared with the courier partner to deliver your parcel.\nWe do not sell your data. You can request account deletion from More → Account Deletion Request.",
+        'refund_text' => "Shipments cancelled before pickup are refunded to your wallet instantly.\nWallet balance is refundable on account closure after adjusting pending dues.\nWeight discrepancy disputes won from the courier are refunded to your wallet.\nCOD amounts are remitted as per your remittance cycle.",
+        'contact_hours' => 'Mon–Sat, 10 AM – 7 PM',
+    ];
+}
+
+function v5_content(): array {
+    return [
+        'care_eyebrow' => 'Customer Care & Complaints', 'care_title' => 'Vishwaship Customer Care',
+        'care_text' => 'Need help with a pickup, delivery or shipment? Raise a complaint or find the right Vishwaship contact for your region.',
+        'care_channels' => [
+            ['t' => 'Shipment Support & Complaints', 'd' => 'Complaints, pickup, delivery and tracking issues.', 'email' => 'support@vishwaship.com'],
+            ['t' => 'General & Business Enquiries', 'd' => 'Quotes, partnerships, franchise and general enquiries.', 'email' => 'contact@vishwaship.com'],
+        ],
+        'complaint_categories' => ['Pickup Delay', 'Delivery Delay', 'Tracking Issue', 'Wrong Delivery Update', 'Damaged or Lost Shipment', 'RTO / Return', 'Billing', 'Account Help', 'Other'],
+        'team' => [
+            ['region' => 'Pan India', 'name' => 'Tanmay Panchal', 'role' => 'Founder & CEO · Pan India Operating Head', 'phone' => '+91 63984 75325', 'email' => 'support@vishwaship.com', 'bio' => 'Leads national operations and is the designated contact for Pan India support.'],
+            ['region' => 'North', 'name' => 'Aditya Panchal', 'role' => 'North India Operating Head', 'phone' => '+91 86309 82873', 'email' => 'support@vishwaship.com', 'bio' => 'Leads North India operations and is the regional point of contact.'],
+            ['region' => 'South', 'name' => 'Ankit Panchal', 'role' => 'South India Operating Head', 'phone' => '+91 70117 86855', 'email' => 'support@vishwaship.com', 'bio' => 'Leads South India operations and coordinates regional shipment support.'],
+            ['region' => 'East', 'name' => 'Shanaya Panchal', 'role' => 'East India Operating Head', 'phone' => '+91 73512 39901', 'email' => 'support@vishwaship.com', 'bio' => 'Leads East India operations and is the regional point of contact.'],
+            ['region' => 'West', 'name' => 'Peehu Panchal', 'role' => 'West India Operating Head & West Marketing Head', 'phone' => '+91 89295 90769', 'email' => 'support@vishwaship.com', 'bio' => 'Leads West India operations and marketing, coordinating regional support and business enquiries.'],
+        ],
+        'head_office_title' => 'Vishwaship Head Office', 'head_office_city' => 'Haridwar, Uttarakhand, India',
+        'head_office_address' => 'House no 15, Panchal Villa, Bahadarabad, Pink City And Dream City Near Ranipur Jhal, DPM Hyundai Showroom, Haridwar, Uttarakhand, India – 249402',
+        'head_office_map' => '',
+    ];
+}
+
+function default_content(): array {
+    return v5_content() + v4_content() + [
         'brand_name' => 'vishwaship', 'brand_suffix' => '.com',
         'hero_badge' => 'COURIER BOOKING FOR SELLERS & BUSINESSES',
         'hero_title_1' => 'Ship anywhere in India.', 'hero_title_2' => 'Book in 60 seconds.',
@@ -275,7 +358,9 @@ function create_dispute(array $s, float $courierWeight, string $courierDims, arr
     $vol = 0;
     if (preg_match('/(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)/', $courierDims, $m)) $vol = vol_weight($m[1], $m[2], $m[3]);
     $charged = slab_weight(max($courierWeight, $vol));
-    $newBase = base_rate_card($s['service'], $s['zone'] ?: zone_for($s['from_pincode'], $s['to_pincode']), $charged);
+    $newBase = in_array($s['service'], ['surface', 'express'])
+        ? base_rate_card($s['service'], $s['zone'] ?: zone_for($s['from_pincode'], $s['to_pincode']), $charged)
+        : round((float)$s['base_rate'] * $charged / max(0.5, (float)$s['chargeable_weight']), 2);
     $baseExtra = max(0, round($newBase - $s['base_rate'], 2));
     $custExtra = $baseExtra > 0 ? apply_markup($baseExtra, (float) $s['markup_pct'] ?: markup_for($user)) : 0;
     $days = (int) setting('auto_accept_days', 7);

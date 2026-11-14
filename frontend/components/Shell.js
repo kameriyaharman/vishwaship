@@ -10,16 +10,20 @@ const Ctx = createContext(null);
 export const useShell = () => useContext(Ctx);
 
 const CUSTOMER_NAV = [
-  ['MAIN', [['Dashboard', '/dashboard', 'grid'], ['Book Shipment', '/book', 'plus'], ['Shipments', '/shipments', 'box'], ['Track', '/shipment', 'search']]],
+  ['MAIN', [['Dashboard', '/dashboard', 'grid'], ['Book Shipment', '/book', 'plus'], ['Orders / Shipments', '/shipments', 'box'], ['Track Order', '/shipment', 'search']]],
   ['ISSUES', [['Weight Discrepancy', '/weight-discrepancy', 'weight'], ['NDR / RTO', '/ndr', 'undo']]],
-  ['ACCOUNT', [['Wallet & Invoices', '/wallet', 'wallet'], ['Rate Calculator', '/rate-calculator', 'rupee'], ['Pickup Addresses', '/pickup-addresses', 'pin'], ['Settings', '/settings', 'gear']]],
+  ['BILLING', [['Wallet & Recharge', '/wallet', 'wallet'], ['Passbook & Billing', '/billing', 'receipt']]],
+  ['TOOLS & REPORTS', [['Rate Calculator', '/rate-calculator', 'rupee'], ['Shipment Price List', '/price-list', 'tag'], ['Reports', '/reports', 'chart'], ['Activity Logs', '/activity', 'clock']]],
+  ['SETTINGS', [['Settings', '/settings', 'gear'], ['Warehouse', '/pickup-addresses', 'building'], ['Manage Courier', '/couriers', 'truck'], ['Integrations', '/integrations', 'plug']]],
+  ['HELP', [['Contact Us', '/support', 'phone'], ['More', '/more', 'more']]],
 ];
+const BOTTOM = [['Home', '/dashboard', 'home'], ['Orders', '/shipments', 'box'], ['NDR', '/ndr', 'undo'], ['More', '/more', 'more']];
 const ADMIN_NAV = [
   ['OVERVIEW', [['Admin Dashboard', '/admin', 'grid', 'dashboard']]],
   ['MANAGE', [['Customers', '/admin/customers', 'users', 'customers'], ['All Shipments', '/admin/shipments', 'box', 'shipments'], ['Weight Disputes', '/admin/disputes', 'weight', 'disputes'], ['NDR / RTO', '/admin/ndr', 'undo', 'ndr']]],
-  ['PRICING', [['Rates & Markup', '/admin/rates', 'percent', 'rates']]],
+  ['PRICING', [['Rates & Commission', '/admin/rates', 'percent', 'rates']]],
   ['MONEY', [['Wallet & COD', '/admin/wallet', 'wallet', 'wallet'], ['Reports', '/admin/reports', 'chart', 'reports']]],
-  ['SYSTEM', [['Delhivery API', '/admin/delhivery', 'code', 'delhivery'], ['Staff & Roles', '/admin/staff', 'lock', 'staff'], ['Website Content', '/admin/content', 'globe', 'content'], ['Support & Enquiries', '/admin/support', 'help', 'support']]],
+  ['SYSTEM', [['Courier APIs', '/admin/delhivery', 'code', 'delhivery'], ['Staff & Roles', '/admin/staff', 'lock', 'staff'], ['Website Content', '/admin/content', 'globe', 'content'], ['Support & Enquiries', '/admin/support', 'help', 'support']]],
 ];
 
 export default function Shell({ admin = false, children }) {
@@ -100,7 +104,8 @@ export default function Shell({ admin = false, children }) {
         <div className="main">
           {imp && <div className="imp-bar">You are viewing as {me.business_name || me.name}. <button className="btn btn-sm btn-navy" onClick={logout}>Back to admin</button></div>}
           <header className="top">
-            <button className="burger" onClick={() => setOpen(true)} aria-label="Menu"><Icon name="menu" size={22} /></button>
+            <button className={'burger' + (!admin ? ' hide-sm' : '')} onClick={() => setOpen(true)} aria-label="Menu"><Icon name="menu" size={22} /></button>
+            {!admin && <Link href="/dashboard/" className="show-sm" style={{ flexShrink: 0 }}><img src="/logo-icon.png" alt="" width={32} height={32} style={{ display: 'block' }} /></Link>}
             <form className="search" onSubmit={search}><Icon name="search" size={15} style={{ color: '#9aa0ad' }} /><input placeholder="Search AWB / order ID / phone / customer…" value={q} onChange={(e) => setQ(e.target.value)} /></form>
             {!admin && (
               <Link href="/wallet/" className="walletbtn"><Icon name="wallet" size={14} style={{ color: 'var(--orange)' }} />{inr(me.wallet_balance)} <span className="r lbl2">+ Recharge</span></Link>
@@ -134,8 +139,13 @@ export default function Shell({ admin = false, children }) {
               )}
             </div>
           </header>
-          <div className="content">{children}</div>
+          <div className={'content' + (!admin ? ' has-bnav' : '')}>{children}</div>
         </div>
+        {!admin && (
+          <nav className="bnav">
+            {BOTTOM.map(([l, h, ic]) => <Link key={h} href={h + '/'} className={isOn(h) ? 'on' : ''}><span className="bi"><Icon name={ic} size={21} /></span>{l}</Link>)}
+          </nav>
+        )}
       </div>
       <Toaster />
     </Ctx.Provider>

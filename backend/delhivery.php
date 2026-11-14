@@ -117,10 +117,18 @@ function apply_status(array $s, string $new, string $label, string $location = '
 }
 
 function delhivery_sync(?array $ids = null): array {
-    if (!delhivery_live()) { api_log('Tracking sync (bulk)', 'simulation — nothing to pull', 'success'); return ['synced' => 0, 'note' => 'Simulation mode: update statuses manually from the shipment page, or switch Delhivery to live.']; }
-    $where = "status NOT IN ('delivered','rto_delivered','cancelled') AND awb IS NOT NULL";
-    $rows = all("SELECT * FROM shipments WHERE $where" . ($ids ? ' AND id IN (' . implode(',', array_map('intval', $ids)) . ')' : '') . " LIMIT 500");
     $n = 0;
+    if (shipmozo_on()) {
+        foreach (all("SELECT * FROM shipments WHERE provider='shipmozo' AND status NOT IN ('delivered','rto_delivered','cancelled') AND awb IS NOT NULL LIMIT 200") as $s) {
+            $d = shipmozo_track((string) $s['awb']); if (!$d) continue;
+            $st = (string) sm_pick($d, ['current_status', 'status', 'shipment_status'], '');
+            $new = map_shipmozo_status($st);
+            if ($new && $new !== $s['status']) { apply_status($s, $new, $st, (string) sm_pick($d, ['current_location', 'location'], ''), ''); $n++; }
+        }
+    }
+    if (!delhivery_live()) { api_log('Tracking sync (bulk)', 'Delhivery simulation — nothing to pull', 'success'); return ['synced' => $n, 'note' => ($n ? "$n Shipmozo shipment(s) updated. " : '') . 'Delhivery is in simulation mode: update its statuses manually, or switch Delhivery to live.']; }
+    $where = "provider='delhivery' AND status NOT IN ('delivered','rto_delivered','cancelled') AND awb IS NOT NULL";
+    $rows = all("SELECT * FROM shipments WHERE $where" . ($ids ? ' AND id IN (' . implode(',', array_map('intval', $ids)) . ')' : '') . " LIMIT 500");
     foreach (array_chunk($rows, 50) as $chunk) {
         $data = delhivery_track(array_column($chunk, 'awb'));
         foreach ($chunk as $s) {

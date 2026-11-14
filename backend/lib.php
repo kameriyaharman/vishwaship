@@ -69,7 +69,7 @@ function app_secret(): string { return env('APP_SECRET', 'vishwaship-change-this
 function b64u($s) { return rtrim(strtr(base64_encode($s), '+/', '-_'), '='); }
 function b64ud($s) { return base64_decode(strtr($s, '-_', '+/')); }
 function make_token(array $user, ?int $impersonator = null): string {
-    $p = ['uid' => (int)$user['id'], 'role' => $user['role'], 'exp' => time() + 86400 * 14];
+    $p = ['uid' => (int)$user['id'], 'role' => $user['role'], 'tv' => (int)($user['token_version'] ?? 0), 'exp' => time() + 86400 * 14];
     if ($impersonator) $p['imp'] = $impersonator;
     $pl = b64u(json_encode($p));
     return $pl . '.' . b64u(hash_hmac('sha256', $pl, app_secret(), true));
@@ -88,10 +88,31 @@ function read_token(): ?array {
 function current_user(): ?array {
     static $u = false;
     if ($u !== false) return $u;
+    $key = $_SERVER['HTTP_X_API_KEY'] ?? '';
+    if ($key) {
+        $u = one("SELECT * FROM users WHERE api_key=? AND role='customer'", [hash('sha256', $key)]);
+        if ($u) { $u['_imp'] = null; $u['_api'] = true; }
+        return $u;
+    }
     $t = read_token();
     $u = $t ? one("SELECT * FROM users WHERE id=?", [$t['uid']]) : null;
+    if ($u && (int)($t['tv'] ?? 0) !== (int)$u['token_version']) $u = null;
     if ($u) $u['_imp'] = $t['imp'] ?? null;
     return $u;
+}
+function prefs(array $u): array { return json_decode($u['prefs'] ?? '', true) ?: []; }
+function save_prefs(int $uid, array $patch): array {
+    $cur = json_decode((string) val("SELECT prefs FROM users WHERE id=?", [$uid]), true) ?: [];
+    $new = array_replace_recursive($cur, $patch);
+    update('users', ['prefs' => json_encode($new, JSON_UNESCAPED_UNICODE)], 'id=?', [$uid]);
+    return $new;
+}
+function activity(int $uid, string $action, string $detail = ''): void {
+    try {
+        $me = current_user();
+        insert('activity_logs', ['user_id' => $uid, 'actor_id' => $me && (int)$me['id'] !== $uid ? $me['id'] : ($me['_imp'] ?? null), 'action' => $action,
+            'detail' => mb_substr($detail, 0, 250), 'ip' => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null]);
+    } catch (Throwable $e) {}
 }
 function require_user(): array {
     $u = current_user();
@@ -110,7 +131,8 @@ function require_admin(?string $perm = null): array {
     return $u;
 }
 function public_user(array $u): array {
-    unset($u['password_hash']);
+    unset($u['password_hash'], $u['api_key']);
+    $u['prefs'] = json_decode($u['prefs'] ?? '', true) ?: new stdClass();
     $u['permissions'] = json_decode($u['permissions'] ?? '[]', true) ?: [];
     return $u;
 }
@@ -169,15 +191,18 @@ function service_meta(): array {
 }
 
 /** Full quote: returns options for surface & express with base + final */
-function quote(string $from, string $to, float $weight, $l, $b, $h, string $payment, float $codAmount, ?array $user): array {
+function quote(string $from, string $to, float $weight, $l, $b, $h, string $payment, float $codAmount, ?array $user, float $value = 0): array {
     $vol = vol_weight($l, $b, $h);
     $charge = max($weight, $vol);
     $zone = zone_for($from, $to);
     $markup = markup_for($user);
     $gstPct = (float) setting('gst_pct', 18);
     $out = [];
+    $dis = $user ? (array) (prefs($user)['disabled_services'] ?? []) : [];
     foreach (service_meta() as $svc => $meta) {
+        if (setting('delhivery_enabled', '1') !== '1') break;
         if (setting("service_{$svc}_enabled", '1') !== '1') continue;
+        if ($user && in_array($svc, (array) (prefs($user)['disabled_services'] ?? []))) continue;
         $base = null;
         if (delhivery_live()) $base = delhivery_cost($svc, $from, $to, $charge, $payment, $codAmount);
         if ($base === null) $base = base_rate_card($svc, $zone, $charge);
@@ -189,11 +214,17 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
         }
         $gst = round(($freight + $cod) * $gstPct / 100, 2);
         $out[] = [
-            'service' => $svc, 'name' => $meta['name'], 'days' => $meta['days'],
+            'service' => $svc, 'provider' => 'delhivery', 'courier_id' => null, 'name' => $meta['name'], 'days' => $meta['days'],
             'eta' => date('Y-m-d', strtotime('+' . $meta['eta'] . ' days')),
             'base' => $base, 'cod_base' => $codBase, 'freight' => $freight, 'cod_charge' => $cod,
             'gst' => $gst, 'total' => round($freight + $cod + $gst, 2),
         ];
+    }
+    if (!in_array('shipmozo', $dis)) foreach (shipmozo_rates($from, $to, max($weight, $vol), $l, $b, $h, $payment, $codAmount, $value ?: $codAmount) as $r) {
+        $freight = apply_markup($r['base'], $markup);
+        $gst = round($freight * $gstPct / 100, 2);
+        $out[] = ['service' => 'sm_' . $r['courier_id'], 'provider' => 'shipmozo', 'courier_id' => $r['courier_id'], 'name' => $r['name'], 'days' => $r['days'] ?: 'As per courier',
+            'eta' => $r['eta'] ?: date('Y-m-d', strtotime('+4 days')), 'base' => $r['base'], 'cod_base' => 0, 'freight' => $freight, 'cod_charge' => 0, 'gst' => $gst, 'total' => round($freight + $gst, 2)];
     }
     return ['zone' => $zone, 'zone_label' => ZONE_LABEL[$zone], 'vol_weight' => $vol, 'actual_weight' => $weight,
         'chargeable_weight' => slab_weight($charge), 'raw_chargeable' => $charge, 'markup' => $markup, 'gst_pct' => $gstPct, 'options' => $out];
@@ -261,3 +292,4 @@ function accept_dispute(array $d, string $note = 'Accepted by customer'): void {
 }
 
 require_once __DIR__ . '/delhivery.php';
+require_once __DIR__ . '/shipmozo.php';

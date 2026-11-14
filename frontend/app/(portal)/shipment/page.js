@@ -47,7 +47,8 @@ export default function ShipmentDetail() {
         <div><h1>Shipment Details & Tracking</h1><p>AWB {s.awb} · status auto-updated from Delhivery</p></div>
         <div className="row wrap">
           <a className="btn btn-outline" href={`/label/?id=${s.id}`} target="_blank">Download label</a>
-          <a className="btn btn-outline" href={`/invoice/?shipment=${s.id}`} target="_blank">Invoice</a>
+          <a className="btn btn-outline" href={`/invoice/?shipment=${s.id}`} target="_blank">Shipping invoice</a>
+          <a className="btn btn-outline" href={`/buyer-invoice/?id=${s.id}`} target="_blank">Buyer invoice</a>
           <button className="btn btn-outline" onClick={() => { setTk({ subject: `Issue with AWB ${s.awb}`, message: '' }); setTicket(true); }}>Raise ticket</button>
           {s.status === 'pickup_pending' && <AsyncBtn className="btn btn-red" confirmText="Cancel this shipment? The amount will be refunded to your wallet." onClick={async () => { await api(`/me/shipments/${s.id}/cancel`, { method: 'POST' }); toast('Cancelled & refunded'); refresh(); load(s.id); }}>Cancel</AsyncBtn>}
         </div>
@@ -66,7 +67,7 @@ export default function ShipmentDetail() {
           <div className="kv"><span>From</span><b>{s.from_name}, {s.from_city} {s.from_pincode}</b></div>
           <div className="kv"><span>To</span><b>{s.to_name}, {s.to_city} {s.to_pincode}</b></div>
           <div className="kv"><span>Receiver phone</span><b>{s.to_phone}</b></div>
-          <div className="kv"><span>Service</span><b>Delhivery {s.service === 'express' ? 'Express' : 'Surface'}</b></div>
+          <div className="kv"><span>Courier</span><b>{s.courier_name || `Delhivery ${s.service === 'express' ? 'Express' : 'Surface'}`}</b></div>
           <div className="kv"><span>Mode</span><b>{s.payment_mode === 'cod' ? `COD · ${inr(s.cod_amount)}` : 'Prepaid'}</b></div>
           <div className="kv"><span>Declared</span><b>{kg(s.weight)} · {+s.length}×{+s.breadth}×{+s.height} cm</b></div>
           <div className="kv"><span>Chargeable</span><b>{kg(s.chargeable_weight)}</b></div>

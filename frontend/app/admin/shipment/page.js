@@ -64,9 +64,9 @@ export default function AdminShipment() {
         </div>
         <div className="card">
           <div className="card-h"><h3>Base vs final</h3></div>
-          <div className="kv"><span>Zone</span><b>{s.zone} · {s.service}</b></div>
-          <div className="kv"><span>Delhivery base (freight + COD)</span><b>{inr(base, 2)}</b></div>
-          <div className="kv"><span>Markup</span><b>{+s.markup_pct}%</b></div>
+          <div className="kv"><span>Zone · courier</span><b>{s.zone} · {s.courier_name || s.service} ({s.provider || 'delhivery'})</b></div>
+          <div className="kv"><span>Courier API price</span><b>{inr(base, 2)}</b></div>
+          <div className="kv"><span>Commission</span><b>{+s.markup_pct}%</b></div>
           <div className="kv"><span>Final to customer</span><b>{inr(fin, 2)}</b></div>
           <div className="kv"><span>Margin</span><b className="green">{inr(fin - base, 2)}</b></div>
           <div className="kv"><span>GST</span><b>{inr(s.gst, 2)}</b></div>

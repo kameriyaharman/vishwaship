@@ -4,17 +4,15 @@ import Icon from './Icon';
 import { STATUS } from '@/lib/api';
 
 export function Logo({ dark = false, size = 'md', brand }) {
-  const fs = size === 'sm' ? 15 : size === 'lg' ? 22 : 18;
+  const fs = size === 'sm' ? 15 : size === 'lg' ? 24 : 18;
   const b = brand?.brand_name || 'vishwaship';
   const split = b.toLowerCase() === 'vishwaship' ? ['vishwa', 'ship'] : [b, ''];
   return (
     <span className="row" style={{ gap: 8 }}>
-      <span style={{ width: fs + 8, height: fs + 8, borderRadius: 7, background: 'var(--orange)', display: 'grid', placeItems: 'center', color: '#fff' }}>
-        <Icon name="box" size={fs - 2} sw={2.2} />
-      </span>
-      <span style={{ fontWeight: 700, fontSize: fs, letterSpacing: '-0.02em', color: dark ? 'var(--navy)' : '#fff' }}>
+      <img src="/logo-icon.png" alt="" width={fs + 12} height={fs + 12} style={{ display: 'block' }} />
+      <span style={{ fontWeight: 800, fontSize: fs, letterSpacing: '-0.03em', color: dark ? 'var(--navy)' : '#fff' }}>
         {split[0]}<span style={{ color: 'var(--orange)' }}>{split[1]}</span>
-        <span style={{ fontSize: fs * 0.62 }}>{brand?.brand_suffix ?? '.com'}</span>
+        <span style={{ fontSize: fs * 0.66, fontWeight: 700 }}>{brand?.brand_suffix ?? '.com'}</span>
       </span>
     </span>
   );

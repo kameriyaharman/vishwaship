@@ -38,8 +38,7 @@ export default function AuthPage({ mode }) {
       </div>
       <div className="r">
         <div className="form">
-          <div className="hide" style={{ display: 'none' }} />
-          <div className="mb16" style={{ display: 'none' }}><Logo dark /></div>
+          <Link href="/" className="show-sm mb16" style={{ display: 'block' }}><img src="/logo-full.png" alt="vishwaship.com" style={{ height: 32 }} /></Link>
           {isAdmin ? <div className="chip c-in_transit mb12">Admin / staff login</div> : (
             <div className="seg mb16" style={{ width: 'fit-content' }}>
               <Link href="/signup/"><button className={mode === 'signup' ? 'on' : ''} style={{ width: 110 }}>Sign up</button></Link>

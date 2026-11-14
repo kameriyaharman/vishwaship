@@ -53,6 +53,13 @@ route('GET', '/public/track/([A-Za-z0-9\-]+)', function ($awb) {
         'awb' => $s['awb'], 'order_no' => $s['order_no'], 'status' => $s['status'], 'status_label' => STATUS_LABEL[$s['status']] ?? $s['status'],
         'from_city' => $s['from_city'], 'to_city' => $s['to_city'], 'to_name' => mb_substr($s['to_name'], 0, 1) . '***', 'eta' => $s['eta'], 'service' => $s['service'],
         'delivered_at' => $s['delivered_at'],
+        'brand' => (function () use ($s) {
+            $u = one("SELECT id, business_name, name, mobile, prefs FROM users WHERE id=?", [$s['user_id']]);
+            $t = (json_decode($u['prefs'] ?? '', true) ?: [])['tracking'] ?? [];
+            if (empty($t['enabled'])) return null;
+            return ['name' => $t['name'] ?? ($u['business_name'] ?: $u['name']), 'color' => $t['color'] ?? '#f26b1d', 'phone' => $t['phone'] ?? '', 'email' => $t['email'] ?? '',
+                'website' => $t['website'] ?? '', 'message' => $t['message'] ?? '', 'logo' => !empty($t['logo_id']) ? '/public/brand-logo/' . $u['id'] : null];
+        })(),
         'events' => all("SELECT status,label,location,remark,event_time FROM tracking_events WHERE shipment_id=? ORDER BY event_time DESC, id DESC", [$s['id']]),
     ];
 });
@@ -85,6 +92,7 @@ route('POST', '/auth/login', function () {
     if (!$u || !password_verify((string) req('password'), $u['password_hash'])) fail('Wrong email/mobile or password', 401);
     if ($u['status'] === 'blocked') fail('Your account is blocked. Please contact support.', 403);
     update('users', ['last_login' => date('Y-m-d H:i:s')], 'id=?', [$u['id']]);
+    if ($u['role'] === 'customer') insert('activity_logs', ['user_id' => $u['id'], 'action' => 'Logged in', 'ip' => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? null]);
     return ['token' => make_token($u), 'user' => public_user($u)];
 });
 
@@ -98,6 +106,7 @@ route('POST', '/auth/password', function () {
     if (!password_verify((string) req('current'), $u['password_hash'])) fail('Current password is wrong');
     $n = (string) req('new'); if (strlen($n) < 6) fail('New password must be at least 6 characters');
     update('users', ['password_hash' => password_hash($n, PASSWORD_DEFAULT)], 'id=?', [$u['id']]);
+    activity((int)$u['id'], 'Changed password');
     return ['ok' => true];
 });
 

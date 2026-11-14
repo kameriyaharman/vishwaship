@@ -56,7 +56,11 @@ function shipment_detail(array $s, bool $admin = false): array {
     $s = shipment_row($s);
     $s['events'] = all("SELECT * FROM tracking_events WHERE shipment_id=? ORDER BY event_time DESC, id DESC", [$s['id']]);
     $s['dispute'] = one("SELECT * FROM weight_disputes WHERE shipment_id=? ORDER BY id DESC LIMIT 1", [$s['id']]);
-    $s['customer'] = one("SELECT id,name,business_name,email,mobile FROM users WHERE id=?", [$s['user_id']]);
+    $s['customer'] = one("SELECT id,name,business_name,email,mobile,gstin,prefs FROM users WHERE id=?", [$s['user_id']]);
+    $op = json_decode($s['customer']['prefs'] ?? '', true) ?: [];
+    unset($s['customer']['prefs']);
+    $s['label_prefs'] = (object) ($op['label'] ?? []);
+    $s['invoice_prefs'] = (object) ($op['invoice'] ?? []);
     if (!$admin) { unset($s['base_rate'], $s['cod_base'], $s['markup_pct']); }
     return $s;
 }
@@ -116,6 +120,7 @@ route('POST', '/me/pickups', function () {
     if (!val("SELECT id FROM pickup_addresses WHERE user_id=?", [$u['id']]) || in('is_default')) { q("UPDATE pickup_addresses SET is_default=0 WHERE user_id=?", [$u['id']]); $d['is_default'] = 1; }
     $id = insert('pickup_addresses', $d);
     delhivery_register_pickup(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
+    activity((int)$u['id'], 'Added warehouse', $d['name'] . ' · ' . $d['pincode']);
     return one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
 });
 route('PUT', '/me/pickups/(\d+)', function ($id) {
@@ -131,7 +136,7 @@ route('DELETE', '/me/pickups/(\d+)', function ($id) { $u = require_customer(); q
 route('POST', '/me/quote', function () {
     $u = require_customer();
     $from = (string) req('from'); $to = (string) req('to');
-    return quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u);
+    return quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u, (float) in('invoice_value', 0));
 });
 
 function book_shipment(array $u, array $in, bool $draft = false): array {
@@ -146,7 +151,7 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
     $invoice = (float) $g('invoice_value', 0);
     $cod = $payment === 'cod' ? (float) ($g('cod_amount') ?: $invoice) : 0;
     $w = (float) $g('weight', 0.5);
-    $service = $g('service', 'surface') === 'express' ? 'express' : 'surface';
+    $service = preg_replace('/[^a-z0-9_]/i', '', (string) $g('service', 'surface')) ?: 'surface';
     $data = [
         'user_id' => $u['id'], 'pickup_id' => $p['id'],
         'from_name' => $p['name'], 'from_contact' => $p['contact'], 'from_phone' => $p['phone'], 'from_address' => $p['address'], 'from_city' => $p['city'], 'from_state' => $p['state'], 'from_pincode' => $p['pincode'],
@@ -167,7 +172,7 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
     $sv = delhivery_serviceability($to);
     if (!$sv['serviceable']) fail('Delivery pincode is not serviceable');
     if ($payment === 'cod' && !$sv['cod']) fail('COD is not available for this pincode');
-    $qt = quote($p['pincode'], $to, $w, $data['length'], $data['breadth'], $data['height'], $payment, $cod, $u);
+    $qt = quote($p['pincode'], $to, $w, $data['length'], $data['breadth'], $data['height'], $payment, $cod, $u, $invoice);
     $opt = null; foreach ($qt['options'] as $o) if ($o['service'] === $service) $opt = $o;
     if (!$opt) fail('Selected service is not available');
     $available = (float) $u['wallet_balance'] + (float) $u['credit_limit'];
@@ -175,9 +180,16 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
 
     $data += ['order_no' => next_order_no(), 'vol_weight' => $qt['vol_weight'], 'chargeable_weight' => $qt['chargeable_weight'], 'zone' => $qt['zone'],
         'markup_pct' => $qt['markup'], 'base_rate' => $opt['base'], 'cod_base' => $opt['cod_base'], 'freight' => $opt['freight'], 'cod_charge' => $opt['cod_charge'],
-        'gst' => $opt['gst'], 'total' => $opt['total'], 'status' => 'pickup_pending', 'eta' => $opt['eta'], 'is_draft' => 0];
-    $res = delhivery_create_shipment($data, $p['delhivery_name'] ?: $p['name']);
-    if (!$res['ok']) fail('Delhivery: ' . $res['error']);
+        'gst' => $opt['gst'], 'total' => $opt['total'], 'status' => 'pickup_pending', 'eta' => $opt['eta'], 'is_draft' => 0,
+        'provider' => $opt['provider'], 'courier_name' => $opt['name'], 'courier_id' => $opt['courier_id']];
+    if ($opt['provider'] === 'shipmozo') {
+        $res = shipmozo_create($data, (string) $opt['courier_id']);
+        if (!$res['ok']) fail($res['error']);
+        $data['provider_order_id'] = $res['order_id'];
+    } else {
+        $res = delhivery_create_shipment($data, $p['delhivery_name'] ?: $p['name']);
+        if (!$res['ok']) fail('Delhivery: ' . $res['error']);
+    }
     $data['awb'] = $res['awb'];
     db()->beginTransaction();
     $draftId = (int) $g('draft_id', 0);
@@ -186,7 +198,8 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
     wallet_txn((int)$u['id'], 'debit', $opt['total'], 'Shipment ' . $res['awb'], $res['awb'], 'shipment');
     add_event($id, 'pickup_pending', 'Booked · AWB generated', 'vishwaship.com');
     db()->commit();
-    delhivery_pickup_request($p['delhivery_name'] ?: $p['name'], $data['pickup_date'], 1);
+    if ($opt['provider'] === 'delhivery') delhivery_pickup_request($p['delhivery_name'] ?: $p['name'], $data['pickup_date'], 1);
+    activity((int)$u['id'], 'Booked shipment', $res['awb'] . ' · ' . $data['to_city'] . ' ' . $to . ' · ₹' . $opt['total']);
     return one("SELECT * FROM shipments WHERE id=?", [$id]);
 }
 
@@ -217,12 +230,14 @@ route('POST', '/me/shipments/(\d+)/cancel', function ($id) {
     $u = require_customer();
     $s = my_shipment((int)$id, $u);
     if ($s['status'] !== 'pickup_pending') fail('Only shipments not yet picked up can be cancelled');
-    delhivery_cancel((string)$s['awb']);
+    if (($s['provider'] ?? 'delhivery') === 'shipmozo') { if (!shipmozo_cancel($s)) fail('Shipmozo could not cancel this shipment. Please contact support.'); }
+    else delhivery_cancel((string)$s['awb']);
     db()->beginTransaction();
     update('shipments', ['status' => 'cancelled'], 'id=?', [$id]);
     add_event((int)$id, 'cancelled', 'Shipment cancelled', '', 'Cancelled by customer');
     wallet_txn((int)$u['id'], 'credit', (float)$s['total'], 'Refund · cancelled ' . $s['awb'], $s['awb'], 'refund');
     db()->commit();
+    activity((int)$u['id'], 'Cancelled shipment', (string)$s['awb']);
     return ['ok' => true];
 });
 
@@ -277,6 +292,7 @@ route('POST', '/me/disputes/(\d+)/accept', function ($id) {
     $d = one("SELECT * FROM weight_disputes WHERE id=? AND user_id=? AND status='open'", [$id, $u['id']]);
     if (!$d) fail('Discrepancy not open');
     accept_dispute($d);
+    activity((int)$u['id'], 'Accepted weight discrepancy', (string)$d['awb']);
     return ['ok' => true];
 });
 route('POST', '/me/disputes/(\d+)/dispute', function ($id) {
@@ -286,6 +302,7 @@ route('POST', '/me/disputes/(\d+)/dispute', function ($id) {
     $ids = array_filter(array_map('intval', (array) in('proof_ids', [])));
     update('weight_disputes', ['status' => 'disputed', 'customer_action' => $ids ? 'Disputed + photos' : 'Disputed', 'customer_note' => in('note', ''),
         'customer_proof_ids' => implode(',', $ids)], 'id=?', [$id]);
+    activity((int)$u['id'], 'Raised weight dispute', (string)$d['awb']);
     return ['ok' => true];
 });
 
@@ -322,6 +339,7 @@ route('POST', '/me/ndr/(\d+)', function ($id) {
         update('shipments', ['ndr_action' => 'RTO requested'], 'id=?', [$id]);
         apply_status($s, 'rto_in_transit', 'RTO requested by seller', '', '');
     } else fail('Unknown action');
+    activity((int)$u['id'], 'NDR action: ' . $act, (string)$s['awb']);
     return ['ok' => true];
 });
 
@@ -365,6 +383,7 @@ route('POST', '/me/wallet/recharge', function () {
     db()->beginTransaction();
     $bal = wallet_txn((int)$u['id'], 'credit', $amt, 'Wallet recharge · UPI (test mode)', 'TEST' . time(), 'recharge');
     db()->commit();
+    activity((int)$u['id'], 'Recharged wallet', '₹' . $amt);
     return ['mode' => 'test', 'balance' => $bal];
 });
 route('POST', '/me/wallet/verify', function () {
@@ -399,11 +418,12 @@ route('GET', '/me/invoices/(\d+)', function ($id) {
 // ---------- profile / KYC ----------
 route('PUT', '/me/profile', function () {
     $u = require_customer();
-    $allowed = ['name', 'business_name', 'mobile', 'city', 'gstin', 'bank_name', 'bank_account', 'bank_ifsc', 'monthly_volume'];
+    $allowed = ['name', 'business_name', 'mobile', 'city', 'gstin', 'bank_name', 'bank_account', 'bank_ifsc', 'monthly_volume', 'address', 'state', 'pincode'];
     $d = [];
     foreach ($allowed as $k) if (array_key_exists($k, body())) $d[$k] = trim((string) body()[$k]) ?: null;
     if (isset($d['name']) && !$d['name']) fail('Name is required');
     update('users', $d, 'id=?', [$u['id']]);
+    activity((int)$u['id'], 'Updated profile');
     return public_user(one("SELECT * FROM users WHERE id=?", [$u['id']]));
 });
 route('POST', '/me/kyc', function () {
@@ -414,6 +434,7 @@ route('POST', '/me/kyc', function () {
     $d = ['kyc_type' => $type, 'kyc_status' => 'submitted', 'kyc_doc_id' => in('doc_id') ?: null, 'kyc_note' => null];
     if ($type === 'GST') { if (!preg_match('/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/', $num)) fail('Invalid GSTIN format'); $d['gstin'] = $num; }
     if ($type === 'PAN') { if (!preg_match('/^[A-Z]{5}\d{4}[A-Z]$/', $num)) fail('Invalid PAN format'); $d['pan'] = $num; }
+    activity((int)$u['id'], 'Submitted KYC', $type);
     if ($type === 'AADHAAR') { if (!preg_match('/^\d{12}$/', preg_replace('/\s/', '', $num))) fail('Invalid Aadhaar number'); $d['aadhaar'] = 'XXXX XXXX ' . substr(preg_replace('/\s/', '', $num), -4); }
     update('users', $d, 'id=?', [$u['id']]);
     return public_user(one("SELECT * FROM users WHERE id=?", [$u['id']]));

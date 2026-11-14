@@ -26,13 +26,13 @@ export default function Rates() {
 
   return (
     <>
-      <PageHead title="Rates & Markup" sub="Delhivery base rate (live from API, or your rate card) + your markup = final rate the customer sees before booking">
+      <PageHead title="Rates & Commission" sub="Courier API price (Delhivery / Shipmozo) + your commission % = final rate the customer sees before booking">
         <AsyncBtn onClick={save}>Save changes</AsyncBtn>
       </PageHead>
       <div className="split-1-2" style={{ gridTemplateColumns: '1fr 1.55fr' }}>
         <div className="col" style={{ gap: 14 }}>
           <div className="card" style={{ border: '2px solid var(--orange)' }}>
-            <div className="card-h"><h3><Icon name="percent" style={{ color: 'var(--orange)' }} />Global markup</h3></div>
+            <div className="card-h"><h3><Icon name="percent" style={{ color: 'var(--orange)' }} />Global commission</h3></div>
             <div className="row">
               <div style={{ border: '1px solid var(--line)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <input type="number" value={g} min={0} max={200} onChange={(e) => setG(+e.target.value)} style={{ width: 54, border: 0, fontSize: 24, fontWeight: 700, outline: 'none', textAlign: 'right' }} /><b style={{ fontSize: 22 }}>%</b>
@@ -42,8 +42,8 @@ export default function Rates() {
             <input type="range" min={0} max={50} step={0.5} value={Math.min(g, 50)} onChange={(e) => setG(+e.target.value)} style={{ width: '100%', accentColor: 'var(--orange)', marginTop: 14 }} />
             <div className="row between tiny muted"><span>0%</span><span>50%</span></div>
             <div style={{ background: 'var(--navy)', color: '#fff', borderRadius: 10, padding: 14, marginTop: 12 }}>
-              <div className="kv" style={{ borderColor: 'rgba(255,255,255,.12)' }}><span style={{ color: '#c4cbe0' }}>Delhivery base rate</span><b>₹100</b></div>
-              <div className="kv" style={{ borderColor: 'rgba(255,255,255,.12)' }}><span style={{ color: '#c4cbe0' }}>+ Markup {g}%</span><b>₹{(g).toFixed(g % 1 ? 1 : 0)}</b></div>
+              <div className="kv" style={{ borderColor: 'rgba(255,255,255,.12)' }}><span style={{ color: '#c4cbe0' }}>Courier API price</span><b>₹100</b></div>
+              <div className="kv" style={{ borderColor: 'rgba(255,255,255,.12)' }}><span style={{ color: '#c4cbe0' }}>+ Commission {g}%</span><b>₹{(g).toFixed(g % 1 ? 1 : 0)}</b></div>
               <div className="row between mt8"><b style={{ fontSize: 18 }}>Customer sees</b><b style={{ fontSize: 22, color: 'var(--orange)' }}>{inr(fin(100))}</b></div>
               <div className="tiny" style={{ color: '#aeb7cc' }}>+ GST as applicable</div>
             </div>
@@ -92,12 +92,12 @@ export default function Rates() {
             <p className="tiny muted" style={{ padding: '0 18px 14px' }}>When Delhivery is live, base rates come from the Delhivery cost API per shipment; this rate card is used as fallback and in simulation mode.</p>
           </div>
           <div className="card p0">
-            <div className="card-h" style={{ padding: '16px 18px 0' }}><h3>Customer-wise custom markup</h3><button className="link-navy small" onClick={() => setOv({ id: '', markup_pct: '', markup_reason: '' })}>+ Add override</button></div>
+            <div className="card-h" style={{ padding: '16px 18px 0' }}><h3>Customer-wise commission</h3><button className="link-navy small" onClick={() => setOv({ id: '', markup_pct: '', markup_reason: '' })}>+ Add override</button></div>
             <table className="tbl">
               <thead><tr><th>Customer</th><th>Markup</th><th>Reason</th><th></th></tr></thead>
               <tbody>
                 {d.custom.map((c) => <tr key={c.id}><td>{c.label}</td><td>{+c.markup_pct}%</td><td>{c.markup_reason || '—'}</td><td className="right"><button className="link-navy small" onClick={() => setOv({ ...c })}>Edit</button></td></tr>)}
-                {!d.custom.length && <tr><td colSpan={4} className="empty small">All customers use the global markup.</td></tr>}
+                {!d.custom.length && <tr><td colSpan={4} className="empty small">All customers use the global commission. Set a customer's commission when approving KYC.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -115,11 +115,11 @@ export default function Rates() {
         </Modal>
       )}
       {ov && (
-        <Modal title="Custom markup" onClose={() => setOv(null)}>
+        <Modal title="Customer commission" onClose={() => setOv(null)}>
           <div className="col">
             {!ov.label && <div className="field"><label>Customer</label><select className="select" value={ov.id} onChange={(e) => setOv({ ...ov, id: e.target.value })}><option value="">Select…</option>{d.customers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></div>}
             {ov.label && <b>{ov.label}</b>}
-            <div className="grid2"><div className="field"><label>Markup %</label><input className="input" type="number" step="0.5" value={ov.markup_pct} onChange={(e) => setOv({ ...ov, markup_pct: e.target.value })} /></div>
+            <div className="grid2"><div className="field"><label>Commission %</label><input className="input" type="number" step="0.5" value={ov.markup_pct} onChange={(e) => setOv({ ...ov, markup_pct: e.target.value })} /></div>
               <div className="field"><label>Reason</label><input className="input" value={ov.markup_reason || ''} onChange={(e) => setOv({ ...ov, markup_reason: e.target.value })} /></div></div>
             <div className="row">
               <AsyncBtn disabled={!ov.id} onClick={async () => { await api('/admin/customers/' + ov.id, { method: 'PUT', body: { markup_pct: ov.markup_pct, markup_reason: ov.markup_reason } }); toast('Saved'); setOv(null); reload(); }}>Save</AsyncBtn>

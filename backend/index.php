@@ -35,7 +35,7 @@ if ($path === '/' || $path === '/health') {
 }
 
 // run migrations only when schema version changes
-const SCHEMA_V = '3';
+const SCHEMA_V = '6';
 try { $sv = val("SELECT v FROM settings WHERE k='schema'"); } catch (Throwable $e) { $sv = null; }
 if ($sv !== SCHEMA_V) { migrate(); set_setting('schema', SCHEMA_V); }
 
@@ -45,6 +45,7 @@ function route(string $m, string $pattern, callable $fn) { global $ROUTES; $ROUT
 require __DIR__ . '/routes_public.php';
 require __DIR__ . '/routes_customer.php';
 require __DIR__ . '/routes_admin.php';
+require __DIR__ . '/routes_more.php';
 
 foreach ($ROUTES as [$m, $re, $fn]) {
     if ($m === $method && preg_match($re, $path, $mm)) {

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import ShippingLabel from '@/components/Label';
+import BuyerInvoice from '@/components/BuyerInvoice';
 import { Spinner } from '@/components/ui';
 import { api, getUser, qp } from '@/lib/api';
 
@@ -19,7 +20,9 @@ export default function LabelPage() {
   return (
     <div className="print-area" style={{ padding: 24, background: '#fff', minHeight: '100vh' }}>
       <div className="no-print row mb16"><button className="btn btn-navy" onClick={() => window.print()}>Print / Save as PDF</button><span className="small muted">Use 4×6 inch label paper or A4.</span></div>
-      <div className="col" style={{ gap: 24 }}>{items.map((s) => <div key={s.id} style={{ pageBreakAfter: 'always' }}><ShippingLabel s={s} /></div>)}</div>
+      {items[0]?.label_prefs?.size === 'a4'
+        ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 100mm)', gap: '6mm' }}>{items.map((s) => <ShippingLabel key={s.id} s={s} />)}</div>
+        : <div className="col" style={{ gap: 24 }}>{items.map((s) => <div key={s.id} style={{ pageBreakAfter: 'always' }}><ShippingLabel s={s} />{s.invoice_prefs?.show_on_package && <div className="mt16"><BuyerInvoice s={s} /></div>}</div>)}</div>}
     </div>
   );
 }

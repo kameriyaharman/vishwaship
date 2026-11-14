@@ -26,7 +26,13 @@ Demo customers & shipments are seeded so every screen has data. Remove them from
 - Website content (hero, features, services, contact, terms…), company details, pickup slots, KYC rule, Razorpay keys
 - Staff accounts with section-wise permissions, support tickets and website enquiries
 
-## Delhivery
+## Courier APIs (Admin → Courier APIs)
+
+**Shipmozo:** paste Public key + Private key (Shipmozo panel → Profile → API keys), Warehouse ID, tick "Use Shipmozo couriers" → Save → Test connection → Preview rates. Booking calls rate-calculator → push-order → assign-courier → schedule-pickup; status sync uses track-order. The API base URL is editable in case Shipmozo gives you a different one.
+
+**Commission:** customer price = courier API price + commission %. Global % is in Rates & Commission; each customer's own % is set when approving KYC (Customers → Approve & set commission).
+
+### Delhivery
 
 Starts in **Simulation mode** (generated AWBs, admin rate card, manual status updates). To go live: Admin → Delhivery API → paste token, choose environment, set Mode = Live → Save → Test connection. Give Delhivery the webhook URL shown on that page for automatic status updates.
 
