@@ -1,0 +1,17 @@
+{
+  "name": "vishwaship-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "serve out -l ${PORT:-3000}"
+  },
+  "dependencies": {
+    "jsbarcode": "^3.11.6",
+    "next": "15.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "serve": "^14.2.4"
+  }
+}

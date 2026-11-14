@@ -1,0 +1,46 @@
+// Minimal stroke icon set used across the portal
+const P = {
+  grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+  plus: <><path d="M12 5v14M5 12h14" /></>,
+  box: <><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /><path d="M12 13v8" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></>,
+  weight: <><path d="M6 9h12l2 12H4L6 9z" /><circle cx="12" cy="6" r="3" /></>,
+  undo: <><path d="M9 14L4 9l5-5" /><path d="M4 9h11a5 5 0 010 10h-3" /></>,
+  wallet: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /></>,
+  rupee: <><path d="M6 4h12M6 9h12M14 4c3 0 3 10-6 10l8 7" /></>,
+  pin: <><path d="M12 21s7-6.5 7-12a7 7 0 10-14 0c0 5.5 7 12 7 12z" /><circle cx="12" cy="9" r="2.5" /></>,
+  gear: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></>,
+  users: <><circle cx="9" cy="8" r="3.5" /><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6" /><path d="M16 4.5a3.5 3.5 0 010 7M18 14c2.5.7 4 2.8 4 6" /></>,
+  percent: <><path d="M19 5L5 19" /><circle cx="7" cy="7" r="2.5" /><circle cx="17" cy="17" r="2.5" /></>,
+  chart: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+  code: <><path d="M8 7l-5 5 5 5M16 7l5 5-5 5" /></>,
+  lock: <><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 018 0v3" /></>,
+  bell: <><path d="M6 9a6 6 0 0112 0c0 6 3 7 3 7H3s3-1 3-7" /><path d="M10 20a2 2 0 004 0" /></>,
+  truck: <><path d="M2 6h12v10H2zM14 10h4l3 3v3h-7" /><circle cx="6" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></>,
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  check: <><path d="M5 12l5 5 9-10" /></>,
+  alert: <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16.5v.5" /></>,
+  tag: <><path d="M3 12V4h8l10 10-8 8L3 12z" /><circle cx="7.5" cy="7.5" r="1.5" /></>,
+  download: <><path d="M12 4v11M7 10l5 5 5-5M4 20h16" /></>,
+  upload: <><path d="M12 20V9M7 14l5-5 5 5M4 4h16" /></>,
+  menu: <><path d="M3 6h18M3 12h18M3 18h18" /></>,
+  x: <><path d="M6 6l12 12M18 6L6 18" /></>,
+  logout: <><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" /></>,
+  file: <><path d="M6 2h9l5 5v15H6z" /><path d="M14 2v6h6" /></>,
+  map: <><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z" /><path d="M9 4v14M15 6v14" /></>,
+  link: <><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" /></>,
+  edit: <><path d="M4 20h4L19 9l-4-4L4 16v4z" /></>,
+  trash: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></>,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" /></>,
+  help: <><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 0c0 2-2.5 2-2.5 4M12 17v.5" /></>,
+  arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
+  copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4H4v12h4" /></>,
+  print: <><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M7 14h10v7H7z" /></>,
+};
+export default function Icon({ name, size = 16, sw = 2, style, className }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={style} className={className} aria-hidden="true">
+      {P[name] || P.box}
+    </svg>
+  );
+}
