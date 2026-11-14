@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Icon from '@/components/Icon';
 import RateCalc from '@/components/RateCalc';
 import PublicNav, { PublicFooter } from '@/components/PublicNav';
+import LogoSlider from '@/components/LogoSlider';
 import { Toaster } from '@/components/ui';
 import { useConfig } from '@/lib/config';
 import { inr } from '@/lib/api';
@@ -60,7 +61,7 @@ export default function Home() {
 
       <div className="vs-wrap vs-partners">
         <span className="vs-eyebrow">{c.partners_eyebrow}</span>
-        <div className="vs-plist">{(c.partners || []).map((p) => <span key={p}>{p}</span>)}</div>
+        <LogoSlider logos={c.partner_logos} />
         <div className="small muted">{c.partners_note}</div>
       </div>
 

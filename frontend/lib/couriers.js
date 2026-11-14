@@ -1,0 +1,4 @@
+import { API } from './api';
+const L = [['delhivery', 'Delhivery'], ['blue-dart', 'Blue Dart'], ['dtdc', 'DTDC'], ['xpressbees', 'Xpressbees'], ['ecom-express', 'Ecom Express'], ['ekart', 'Ekart'], ['amazon-shipping', 'Amazon Shipping'], ['shadowfax', 'Shadowfax'], ['fedex-express', 'FedEx Express'], ['dhl', 'DHL'], ['india-post', 'India Post'], ['aramex', 'Aramex'], ['ups', 'UPS'], ['allcargo-gati', 'Allcargo Gati'], ['tci-express', 'TCI Express'], ['tci', 'TCI'], ['trackon', 'Trackon'], ['the-professional-couriers', 'The Professional Couriers'], ['shree-maruti', 'Shree Maruti'], ['dp-world', 'DP World'], ['porter', 'Porter'], ['borzo', 'Borzo'], ['allcargo-logistics', 'Allcargo Logistics']];
+export const DEFAULT_LOGOS = L.map(([k, name]) => ({ name, src: `/couriers/${k}.webp` }));
+export const logoSrc = (src) => (src || '').startsWith('file:') ? `${API}/public/logo/${src.slice(5)}` : src;

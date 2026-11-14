@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Spinner, ErrorBox, AsyncBtn, toast, useLoad, PageHead } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, uploadFile } from '@/lib/api';
+import { DEFAULT_LOGOS, logoSrc } from '@/lib/couriers';
 import { loadConfig } from '@/lib/config';
 
 const ICONS = ['rupee', 'tag', 'truck', 'chart'];
@@ -44,7 +45,7 @@ export default function Content() {
             </div>
             <div className="card col"><h3 style={{ fontSize: 15 }}>Tracking box & partners</h3>
               {T('track_title', 'Tracking title')}{T('track_text', 'Tracking text')}{T('partners_eyebrow', 'Partners heading')}
-              <div className="field"><label>Courier partners (one per line)</label><textarea className="textarea" value={(f.partners || []).join('\n')} onChange={(e) => setF({ ...f, partners: e.target.value.split('\n') })} /></div>
+              <LogoEditor value={f.partner_logos} onChange={(v) => setF({ ...f, partner_logos: v })} />
               {T('partners_note', 'Partners note')}</div>
           </div>
           <div className="col" style={{ gap: 14 }}>
@@ -148,5 +149,39 @@ export default function Content() {
         </div>
       )}
     </>
+  );
+}
+
+function LogoEditor({ value, onChange }) {
+  const list = value && value.length ? value : DEFAULT_LOGOS;
+  const [busy, setBusy] = useState(false);
+  const set = (a) => onChange(a);
+  const move = (i, d) => { const a = [...list]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; set(a); };
+  const add = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    setBusy(true);
+    try { const id = await uploadFile(file); set([...list, { name: file.name.replace(/\.[^.]+$/, ''), src: 'file:' + id }]); toast('Logo added — click Save to publish'); }
+    catch (er) { toast(er.message, true); } finally { setBusy(false); }
+  };
+  return (
+    <div className="field"><label>Courier logo slider ({list.length} logos · moves on the home page)</label>
+      <div className="col" style={{ gap: 6, maxHeight: 360, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 10, padding: 8 }}>
+        {list.map((l, i) => (
+          <div key={i} className="row" style={{ gap: 8 }}>
+            <img src={logoSrc(l.src)} alt="" style={{ width: 70, height: 30, objectFit: 'contain', background: '#fff', border: '1px solid var(--line)', borderRadius: 6, padding: 3 }} />
+            <input className="input grow" value={l.name || ''} onChange={(e) => { const a = [...list]; a[i] = { ...l, name: e.target.value }; set(a); }} />
+            <button type="button" className="icon-btn" onClick={() => move(i, -1)} aria-label="Move up">↑</button>
+            <button type="button" className="icon-btn" onClick={() => move(i, 1)} aria-label="Move down">↓</button>
+            <button type="button" className="icon-btn" onClick={() => set(list.filter((_, k) => k !== i))} aria-label="Remove">✕</button>
+          </div>
+        ))}
+      </div>
+      <div className="row mt8" style={{ gap: 12 }}>
+        <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>{busy ? 'Uploading…' : '+ Upload logo'}<input type="file" accept="image/*" hidden onChange={add} disabled={busy} /></label>
+        <button type="button" className="link small" onClick={() => set(DEFAULT_LOGOS)}>Reset to default 23 logos</button>
+      </div>
+      <div className="tiny muted mt8">PNG/WebP with transparent background works best (max 2 MB).</div>
+    </div>
   );
 }
