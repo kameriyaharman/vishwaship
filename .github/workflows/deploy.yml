@@ -42,6 +42,8 @@ jobs:
           rm -f site/api/config.php site/api/config.sample.php site/api/Dockerfile site/api/router.php
           # keep server-only files out of git so pulls never touch them
           printf "api/config.php\napi/uploads/\n" > site/.gitignore
+          # marker to check which build is live: https://vishwaship.com/build.txt
+          echo "${GITHUB_SHA} $(date -u +%FT%TZ)" > site/build.txt
 
       - name: Publish to deploy branch
         uses: peaceiris/actions-gh-pages@v4
@@ -78,5 +80,6 @@ jobs:
             mirror -R --parallel=4 --only-newer --no-perms --verbose=1 \
               --exclude-glob api/config.php --exclude-glob .gitignore --exclude-glob .nojekyll \
               ./site/ $FTP_DIR;
+            echo '--- FTP home:'; pwd; cls -l index.html build.txt;
             bye"
           echo "Uploaded to $FTP_DIR"
