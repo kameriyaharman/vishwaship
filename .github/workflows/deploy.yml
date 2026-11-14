@@ -75,6 +75,7 @@ jobs:
             set ftp:passive-mode yes; set ftp:prefer-epsv no;
             set net:max-retries 4; set net:reconnect-interval-base 5; set net:timeout 30;
             open --env-password -u $FTP_USERNAME $FTP_SERVER;
+            echo '--- FTP home:'; pwd; cls -1; echo '--- domains:'; cls -1 domains;
             mirror -R --parallel=4 --only-newer --no-perms --verbose=1 \
               --exclude-glob api/config.php --exclude-glob .gitignore --exclude-glob .nojekyll \
               ./site/ $FTP_DIR;
