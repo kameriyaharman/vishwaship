@@ -1,0 +1,54 @@
+name: Build for Hostinger
+
+# Every push to main: build Next.js (static export) + copy PHP API
+# and publish the ready-to-serve site to the `deploy` branch.
+# Hostinger (hPanel -> Advanced -> GIT) pulls the `deploy` branch into public_html via webhook.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hostinger-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build frontend (static export)
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Assemble public_html
+        run: |
+          mkdir -p site/api
+          cp -r frontend/out/. site/
+          cp -r backend/. site/api/
+          # config.php lives only on the server (DB password); never ship it from the repo
+          rm -f site/api/config.php site/api/config.sample.php site/api/Dockerfile site/api/router.php
+          # keep server-only files out of git so pulls never touch them
+          printf "api/config.php\napi/uploads/\n" > site/.gitignore
+
+      - name: Publish to deploy branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: deploy
+          publish_dir: ./site
+          keep_files: false
+          enable_jekyll: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: deploy ${{ github.sha }}
