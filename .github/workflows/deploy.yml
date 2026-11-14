@@ -57,18 +57,22 @@ jobs:
 
       # Direct upload to Hostinger over FTP (runs only once the FTP_* secrets are added in
       # GitHub → Settings → Secrets and variables → Actions). Only changed files are sent;
-      # api/config.php on the server is never touched.
+      # nothing is deleted on the server and api/config.php is never touched.
       - name: Upload to Hostinger (FTP)
         if: env.FTP_SERVER != ''
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./site/
-          server-dir: ${{ secrets.FTP_DIR || 'public_html/' }}
-          exclude: |
-            **/.git*
-            **/.git*/**
-            api/config.php
-            .gitignore
+        env:
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ secrets.FTP_DIR || 'public_html' }}
+        run: |
+          sudo apt-get install -y -qq lftp >/dev/null
+          lftp -e "
+            set ftp:ssl-allow yes; set ftp:ssl-force no; set ssl:verify-certificate no;
+            set ftp:passive-mode yes; set ftp:prefer-epsv no;
+            set net:max-retries 4; set net:reconnect-interval-base 5; set net:timeout 30;
+            open -u \"$FTP_USERNAME\",\"$FTP_PASSWORD\" \"$FTP_SERVER\";
+            mirror -R --parallel=4 --only-newer --no-perms --verbose=1 \
+              --exclude-glob api/config.php --exclude-glob .gitignore --exclude-glob .nojekyll \
+              ./site/ \"$FTP_DIR\";
+            bye"
+          echo "Uploaded to $FTP_DIR"
