@@ -47,6 +47,7 @@ export function PublicFooter({ content: c = {} }) {
           <div><b>Policies</b><Link href="/privacy/">Privacy Policy</Link><Link href="/refund-policy/">Refund & Cancellation</Link><Link href="/terms/">Terms & Conditions</Link></div>
         </div>
         <div className="bottom"><span>{c.footer_text}</span><span>{c.contact_hours}</span></div>
+        <div className="vs-credit">Developed by <a href="https://customesolution.com" target="_blank" rel="noopener">CustomE Solution</a></div>
       </div>
     </footer>
   );

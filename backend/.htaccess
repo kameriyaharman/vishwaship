@@ -1,6 +1,11 @@
-# Hostinger / Apache: send every request to index.php
+# Vishwaship API — every request goes to index.php
+Options -Indexes
 RewriteEngine On
 RewriteCond %{HTTP:Authorization} ^(.*)
 RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^ index.php [QSA,L]
+# never serve the sample/config source
+<FilesMatch "^config(\.sample)?\.php$">
+  Require all denied
+</FilesMatch>
