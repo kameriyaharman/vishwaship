@@ -18,6 +18,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,3 +54,21 @@ jobs:
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
           commit_message: deploy ${{ github.sha }}
+
+      # Direct upload to Hostinger over FTP (runs only once the FTP_* secrets are added in
+      # GitHub → Settings → Secrets and variables → Actions). Only changed files are sent;
+      # api/config.php on the server is never touched.
+      - name: Upload to Hostinger (FTP)
+        if: env.FTP_SERVER != ''
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./site/
+          server-dir: ${{ secrets.FTP_DIR || 'public_html/' }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            api/config.php
+            .gitignore
