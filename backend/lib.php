@@ -1,7 +1,15 @@
 <?php
 // Vishwaship API — shared helpers (DB, JSON, auth, settings, pricing)
 
-function env($k, $d = null) { $v = getenv($k); return ($v === false || $v === '') ? $d : $v; }
+// Settings come from environment variables (Railway/Docker) or, on shared hosting
+// like Hostinger, from config.php placed next to index.php (returns an array).
+function env($k, $d = null) {
+    static $cfg = null;
+    if ($cfg === null) { $f = __DIR__ . '/config.php'; $cfg = is_file($f) ? (array) (include $f) : []; }
+    $v = getenv($k);
+    if ($v === false || $v === '') $v = $cfg[$k] ?? '';
+    return ($v === false || $v === '' || $v === null) ? $d : $v;
+}
 
 function db(): PDO {
     static $pdo = null;

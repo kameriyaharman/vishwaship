@@ -119,7 +119,6 @@ function migrate(): void {
     }
     q("UPDATE cod_remittances SET ref_no=CONCAT('CODR', LPAD(id, 6, '0')) WHERE ref_no IS NULL");
     q("UPDATE cod_remittances SET amount_paid=amount, paid_at=COALESCE(paid_at, CONCAT(remit_date, ' 12:00:00')) WHERE amount_paid IS NULL AND status='paid'");
-    q("UPDATE cod_remittances SET gross=amount WHERE gross IS NULL");
     $cc = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
     if (is_array($cc) && (($cc['hero_image'] ?? '') === '' || str_contains((string) ($cc['hero_image'] ?? ''), 'images.hostinger.com'))) { $cc['hero_image'] = '/hero.jpg'; set_setting('content', $cc); }
     // v6: multi-provider (Delhivery + Shipmozo)
@@ -145,6 +144,7 @@ function migrate(): void {
     ] as $t => $cols) foreach ($cols as $c => $def) {
         if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?", [$t, $c])) $pdo->exec("ALTER TABLE `$t` ADD COLUMN `$c` $def");
     }
+    q("UPDATE cod_remittances SET gross=amount WHERE gross IS NULL");
     foreach (['early_cod_fee_pct' => '1', 'early_cod_cycle' => 'D+2 (2 days after delivery)', 'notif_credit_price' => '0.25', 'notif_provider_enabled' => '0',
         'notif_provider_name' => '', 'cod_confirm_enabled' => '0'] as $k => $v) q("INSERT IGNORE INTO settings (k,v) VALUES (?,?)", [$k, $v]);
     $c = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
