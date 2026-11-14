@@ -40,14 +40,14 @@ export default function Dashboard() {
             </div>
           )}
           <div className="stats">
-            <Stat icon="box" title="Total shipments" value={c.all.toLocaleString('en-IN')} sub={`all time ${L.all.toLocaleString('en-IN')}`} color="navy" />
-            <Stat icon="clock" title="Pickup pending" value={L.pickup_pending} sub={`pickup today ${d.pickup_today}`} color="yellow" />
-            <Stat icon="truck" title="In transit" value={L.in_transit + L.picked_up} sub="live" color="blue" />
-            <Stat icon="truck" title="Out for delivery" value={L.out_for_delivery} sub="live" color="purple" />
-            <Stat icon="check" title="Delivered" value={c.delivered.toLocaleString('en-IN')} sub={`${d.delivered_pct}%`} color="green" />
-            <Stat icon="undo" title="RTO" value={c.rto} sub={`${d.rto_pct}%`} color="red" />
-            <Stat icon="alert" title="NDR (action needed)" value={d.ndr_open} sub={<Link href="/ndr/">re-attempt / RTO</Link>} color="orange" />
-            <Stat icon="weight" title="Weight discrepancy" value={d.wd_open} sub={<Link href="/weight-discrepancy/">{inr(d.wd_amount)} extra · view</Link>} color="orange" />
+            <Stat href="/shipments/" icon="box" title="Total shipments" value={c.all.toLocaleString('en-IN')} sub={`all time ${L.all.toLocaleString('en-IN')}`} color="navy" />
+            <Stat href="/shipments/?tab=pickup_pending" icon="clock" title="Pickup pending" value={L.pickup_pending} sub={`pickup today ${d.pickup_today}`} color="yellow" />
+            <Stat href="/shipments/?tab=in_transit_all" icon="truck" title="In transit" value={L.in_transit + L.picked_up} sub="live" color="blue" />
+            <Stat href="/shipments/?tab=out_for_delivery" icon="truck" title="Out for delivery" value={L.out_for_delivery} sub="live" color="purple" />
+            <Stat href="/shipments/?tab=delivered" icon="check" title="Delivered" value={c.delivered.toLocaleString('en-IN')} sub={`${d.delivered_pct}%`} color="green" />
+            <Stat href="/shipments/?tab=rto" icon="undo" title="RTO" value={c.rto} sub={`${d.rto_pct}%`} color="red" />
+            <Stat href="/ndr/" icon="alert" title="NDR (action needed)" value={d.ndr_open} sub="re-attempt / RTO" color="orange" />
+            <Stat href="/weight-discrepancy/" icon="weight" title="Weight discrepancy" value={d.wd_open} sub={`${inr(d.wd_amount)} extra · view`} color="orange" />
           </div>
 
           <div className="split-1-2 mt16" style={{ gridTemplateColumns: '1fr 1.45fr' }}>

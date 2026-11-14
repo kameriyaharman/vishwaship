@@ -5,6 +5,7 @@ import Icon from '@/components/Icon';
 import LabelButton from '@/components/LabelButton';
 import { Chip, Spinner, ErrorBox, Modal, toast, AsyncBtn, useLoad } from '@/components/ui';
 import { api, download, inr, kg, dShort, qp, STATUS } from '@/lib/api';
+import MobileOrders from '@/components/MobileOrders';
 
 const TABS = ['all', 'pickup_pending', 'in_transit', 'out_for_delivery', 'delivered', 'rto', 'ndr', 'lost', 'weight_discrepancy'];
 const EXTRA_TAB = { in_transit_all: 'In transit (all)', undelivered: 'Undelivered' };
@@ -27,6 +28,11 @@ export default function Shipments() {
 
   return (
     <>
+      <div className="show-sm">
+        <MobileOrders d={d} tab={tab} setTab={(t) => { setTab(t); setPage(1); }} f={f} setF={setF} apply={apply} page={page} setPage={setPage} loading={loading} reload={reload}
+          drafts={drafts.data?.items || []} onDrafts={() => setShowDrafts(true)} onBulk={() => setBulk(true)} onExport={() => download('/me/shipments?export=1&' + params(), 'shipments.csv')} />
+      </div>
+      <div className="hide-sm">
       <div className="ph">
         <div><h1>My Shipments</h1><p>Filter by status, date, payment mode · bulk label & manifest download</p></div>
         <div className="row wrap">
@@ -78,6 +84,7 @@ export default function Shipments() {
         <div className="row between mt12 small"><span className="muted">{d.total} shipments</span>
           <div className="row"><button className="btn btn-outline btn-sm" disabled={page === 1 || loading} onClick={() => setPage(page - 1)}>← Prev</button><span>Page {page}</span><button className="btn btn-outline btn-sm" disabled={page * 50 >= d.total || loading} onClick={() => setPage(page + 1)}>Next →</button></div></div>
       )}
+      </div>
       {bulk && <BulkUpload onClose={() => setBulk(false)} onDone={() => { reload(); }} />}
       {showDrafts && (
         <Modal title="Saved drafts" onClose={() => setShowDrafts(false)}>

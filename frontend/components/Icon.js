@@ -50,6 +50,7 @@ const P = {
   chev: <><path d="M6 9l6 6 6-6" /></>,
   dot: <><circle cx="12" cy="12" r="4" /></>,
   key: <><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M17 6l3 3" /></>,
+  sliders: <><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></>,
   print: <><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M7 14h10v7H7z" /></>,
 };
 export default function Icon({ name, size = 16, sw = 2, style, className }) {

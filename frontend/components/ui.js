@@ -22,14 +22,16 @@ export function Chip({ s, label, cls }) {
   return <span className={'chip c-' + (cls || s)}>{label || STATUS[s] || (s ? s[0].toUpperCase() + s.slice(1).replace(/_/g, ' ') : '')}</span>;
 }
 
-export function Stat({ icon, title, value, sub, subCls, color, plain }) {
-  return (
-    <div className={'stat ' + (plain ? 'plain' : 'bl-' + (color || 'navy'))}>
-      <div className="t">{icon && <Icon name={icon} size={14} />}{title}</div>
+export function Stat({ icon, title, value, sub, subCls, color, plain, href }) {
+  const inner = (
+    <>
+      <div className="t">{icon && <Icon name={icon} size={14} />}{title}{href && <Icon name="arrow" size={13} style={{ marginLeft: 'auto', color: 'var(--muted)' }} />}</div>
       <div className="v">{value}</div>
       {sub !== undefined && <div className={'s ' + (subCls || '')}>{sub}</div>}
-    </div>
+    </>
   );
+  const cls = 'stat ' + (plain ? 'plain' : 'bl-' + (color || 'navy')) + (href ? ' stat-link' : '');
+  return href ? <a href={href} className={cls}>{inner}</a> : <div className={cls}>{inner}</div>;
 }
 
 export function Spinner() { return <div className="spinner" />; }
