@@ -65,7 +65,7 @@ jobs:
         env:
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          FTP_DIR: ${{ secrets.FTP_DIR || '.' }}  # Hostinger FTP login already opens in public_html
+          FTP_DIR: ${{ secrets.FTP_DIR || '../domains/vishwaship.com/public_html' }}  # FTP login opens in ~/public_html; live site lives in ~/domains/vishwaship.com/public_html
         run: |
           sudo apt-get install -y -qq lftp >/dev/null
           # tidy values pasted with spaces / ftp:// prefix / trailing slash
