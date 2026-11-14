@@ -63,7 +63,7 @@ jobs:
         env:
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          FTP_DIR: ${{ secrets.FTP_DIR || 'public_html' }}
+          FTP_DIR: ${{ secrets.FTP_DIR || '.' }}  # Hostinger FTP login already opens in public_html
         run: |
           sudo apt-get install -y -qq lftp >/dev/null
           # tidy values pasted with spaces / ftp:// prefix / trailing slash
@@ -75,7 +75,6 @@ jobs:
             set ftp:passive-mode yes; set ftp:prefer-epsv no;
             set net:max-retries 4; set net:reconnect-interval-base 5; set net:timeout 30;
             open --env-password -u $FTP_USERNAME $FTP_SERVER;
-            echo '--- FTP home:'; pwd; cls -1; echo '--- domains:'; cls -1 domains;
             mirror -R --parallel=4 --only-newer --no-perms --verbose=1 \
               --exclude-glob api/config.php --exclude-glob .gitignore --exclude-glob .nojekyll \
               ./site/ $FTP_DIR;
