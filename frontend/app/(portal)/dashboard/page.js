@@ -1,16 +1,18 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/Icon';
 import { useShell } from '@/components/Shell';
 import { Stat, Chip, Spinner, ErrorBox, useLoad } from '@/components/ui';
-import { api, inr, kg, dLong, dShort } from '@/lib/api';
+import { api, inr, kg, dLong, dShort, qp, lakh } from '@/lib/api';
 
 const RANGES = { today: 'Today', week: 'Last 7 days', month: 'This month', last_month: 'Last month', all: 'All time' };
 
 export default function Dashboard() {
   const { me } = useShell();
   const [range, setRange] = useState('month');
+  const [tab, setTab] = useState('overview');
+  useEffect(() => { if (qp('tab') === 'status') setTab('status'); }, []);
   const { data: d, err, reload } = useLoad(() => api('/me/dashboard?range=' + range), [range]);
   const max = d ? Math.max(1, ...d.chart.map((x) => x.n)) : 1;
   const c = d?.range_counts;
@@ -24,13 +26,17 @@ export default function Dashboard() {
           {Object.entries(RANGES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
       </div>
+      <div className="seg mb16"><button className={tab === 'overview' ? 'on' : ''} onClick={() => setTab('overview')}>Overview</button><button className={tab === 'status' ? 'on' : ''} onClick={() => setTab('status')}>Order Status</button></div>
+      {tab === 'status' ? <OrderStatus /> : <>
       <ErrorBox err={err} onRetry={reload} />
       {!d ? <Spinner /> : (
         <>
           {me.kyc_status !== 'verified' && (
             <div className="card mb12 row between wrap" style={{ background: 'var(--orange-soft)', borderColor: 'var(--orange-line)' }}>
-              <span className="row"><Icon name="alert" style={{ color: 'var(--orange)' }} /> <b>Complete your KYC</b> <span className="small muted">— PAN / GST / Aadhaar needed to start shipping.</span></span>
-              <Link href="/settings/" className="btn btn-orange btn-sm">Complete KYC</Link>
+              {me.kyc_status === 'submitted'
+                ? <span className="row"><Icon name="clock" style={{ color: 'var(--orange)' }} /> <b>KYC pending approval</b> <span className="small muted">— our team is reviewing your documents.</span></span>
+                : <span className="row"><Icon name="alert" style={{ color: 'var(--orange)' }} /> <b>{me.kyc_status === 'rejected' ? 'KYC rejected — please re-submit' : 'Complete your KYC'}</b> <span className="small muted">— Aadhaar, PAN, cancelled cheque & bank details.</span></span>}
+              <Link href="/settings/?tab=kyc" className="btn btn-orange btn-sm">{me.kyc_status === 'submitted' ? 'View status' : 'Complete KYC'}</Link>
             </div>
           )}
           <div className="stats">
@@ -86,6 +92,53 @@ export default function Dashboard() {
           </div>
         </>
       )}
+      </>}
+    </>
+  );
+}
+
+function OrderStatus() {
+  const { data: d, err, reload } = useLoad(() => api('/me/dashboard/status'), []);
+  if (err) return <ErrorBox err={err} onRetry={reload} />;
+  if (!d) return <Spinner />;
+  const c = d.counts;
+  const link = (tab) => `/shipments/?from=${d.from}&to=${d.to}${tab ? '&tab=' + tab : ''}`;
+  const tiles = [['Total Shipments', c.total, '', 'box', 'navy'], ['Pickup Pending', c.pickup_pending, 'pickup_pending', 'clock', 'yellow'], ['In Transit', c.in_transit, 'in_transit_all', 'truck', 'blue'],
+    ['Delivered', c.delivered, 'delivered', 'check', 'green'], ['Undelivered', c.undelivered, 'undelivered', 'alert', 'orange'], ['RTO', c.rto, 'rto', 'undo', 'red'], ['Lost', c.lost, 'lost', 'x', 'purple']];
+  const R = d.revenue;
+  return (
+    <>
+      <div className="split" style={{ gridTemplateColumns: '1fr 2fr' }}>
+        <div className="card" style={{ background: 'var(--navy)', color: '#fff', borderColor: 'var(--navy)' }}>
+          <div className="small" style={{ color: '#b9c3d4' }}>Today’s Orders</div>
+          <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1.1, margin: '6px 0' }}>{d.today.orders}</div>
+          <div className="small" style={{ color: '#cfd6e4' }}>Order value {inr(d.today.value)}</div>
+          <div className="row mt12" style={{ gap: 16, fontSize: 13 }}><span>Prepaid <b>{d.today.prepaid}</b></span><span>COD <b>{d.today.cod}</b></span><span>Pickup pending <b>{d.today.pickup_pending}</b></span></div>
+          <Link href="/book/" className="btn btn-orange btn-sm mt16">+ Book shipment</Link>
+        </div>
+        <div className="card">
+          <div className="card-h"><h3>Shipment Details</h3><span className="small muted">Last 30 days · {dShort(d.from)} – {dShort(d.to)}</span></div>
+          <div className="grid4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+            {tiles.map(([l, n, t, ic, col]) => (
+              <Link key={l} href={link(t)} className={'stat bl-' + col} style={{ display: 'block' }} title={`Open ${l.toLowerCase()} shipments`}>
+                <div className="t"><Icon name={ic} size={14} />{l}</div><div className="v">{n}</div><div className="s link small">View →</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="card mt16">
+        <div className="card-h"><h3>Revenue <span className="small muted">(order value of shipments booked)</span></h3></div>
+        <div className="grid4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+          {[['Today’s Revenue', R.today], ['This Week', R.week], ['This Month', R.month], ['Last 90 Days', R.days90], ['This Year', R.year]].map(([l, v]) => (
+            <div key={l} className="stat plain"><div className="t">{l}</div><div className="v" style={{ fontSize: 22 }}>{lakh(v)}</div></div>
+          ))}
+        </div>
+      </div>
+      <Link href="/billing/?view=cod" className="card mt16 row between" style={{ background: 'var(--orange-soft)', borderColor: 'var(--orange-line)' }}>
+        <span className="row"><Icon name="rupee" style={{ color: 'var(--orange)' }} /><span><b>COD Remittance</b><div className="small muted">Due {inr(d.cod_due)} · next remittance {dShort(d.next_remittance)}</div></span></span>
+        <span className="link">Open →</span>
+      </Link>
     </>
   );
 }

@@ -98,6 +98,30 @@ function migrate(): void {
     ];
     foreach ($stmts as $s) $pdo->exec($s);
 
+    // v7: change requests (documents, KYC docs, COD remittance detail, ticket conversations)
+    $addCols = [
+        'shipments' => ['hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
+        'users' => ['account_type' => "VARCHAR(20) NOT NULL DEFAULT 'individual'", 'aadhaar_doc_id' => 'INT NULL', 'pan_doc_id' => 'INT NULL', 'cheque_doc_id' => 'INT NULL', 'gst_doc_id' => 'INT NULL', 'kyc_submitted_at' => 'DATETIME NULL', 'kyc_reviewed_at' => 'DATETIME NULL'],
+        'cod_remittances' => ['ref_no' => 'VARCHAR(30) NULL', 'wallet_used' => 'DECIMAL(12,2) NOT NULL DEFAULT 0', 'amount_paid' => 'DECIMAL(12,2) NULL', 'paid_at' => 'DATETIME NULL'],
+        'tickets' => ['ticket_no' => 'VARCHAR(20) NULL', 'category' => 'VARCHAR(60) NULL', 'awb' => 'VARCHAR(40) NULL', 'priority' => "VARCHAR(10) NOT NULL DEFAULT 'normal'", 'assignee_id' => 'INT NULL',
+            'resolution' => 'TEXT NULL', 'updated_at' => 'DATETIME NULL', 'customer_seen_at' => 'DATETIME NULL', 'last_reply_by' => 'VARCHAR(10) NULL'],
+    ];
+    foreach ($addCols as $t => $cols) foreach ($cols as $c => $def)
+        if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?", [$t, $c])) $pdo->exec("ALTER TABLE `$t` ADD COLUMN `$c` $def");
+    if (val("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tickets' AND COLUMN_NAME='status'") === 'enum') $pdo->exec("ALTER TABLE tickets MODIFY status VARCHAR(20) NOT NULL DEFAULT 'open'");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS ticket_messages (id INT AUTO_INCREMENT PRIMARY KEY, ticket_id INT NOT NULL, author_type VARCHAR(10) NOT NULL, author_id INT NULL, message TEXT NULL, file_ids VARCHAR(255) NULL,
+        kind VARCHAR(10) NOT NULL DEFAULT 'message', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX(ticket_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // backfill: ticket numbers + first message for old tickets
+    foreach (all("SELECT * FROM tickets WHERE ticket_no IS NULL") as $t) {
+        update('tickets', ['ticket_no' => 'TKT' . str_pad((string) $t['id'], 6, '0', STR_PAD_LEFT), 'category' => $t['category'] ?? 'Shipment Related Issue', 'updated_at' => $t['created_at']], 'id=?', [$t['id']]);
+        insert('ticket_messages', ['ticket_id' => $t['id'], 'author_type' => 'customer', 'author_id' => $t['user_id'], 'message' => $t['message'], 'created_at' => $t['created_at']]);
+        if ($t['reply']) insert('ticket_messages', ['ticket_id' => $t['id'], 'author_type' => 'staff', 'message' => $t['reply']]);
+    }
+    q("UPDATE cod_remittances SET ref_no=CONCAT('CODR', LPAD(id, 6, '0')) WHERE ref_no IS NULL");
+    q("UPDATE cod_remittances SET amount_paid=amount, paid_at=COALESCE(paid_at, CONCAT(remit_date, ' 12:00:00')) WHERE amount_paid IS NULL AND status='paid'");
+    q("UPDATE cod_remittances SET gross=amount WHERE gross IS NULL");
+    $cc = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
+    if (is_array($cc) && (($cc['hero_image'] ?? '') === '' || str_contains((string) ($cc['hero_image'] ?? ''), 'images.hostinger.com'))) { $cc['hero_image'] = '/hero.jpg'; set_setting('content', $cc); }
     // v6: multi-provider (Delhivery + Shipmozo)
     foreach (['provider' => "VARCHAR(20) NOT NULL DEFAULT 'delhivery'", 'courier_name' => 'VARCHAR(80) NULL', 'courier_id' => 'VARCHAR(40) NULL', 'provider_order_id' => 'VARCHAR(60) NULL'] as $c => $def)
         if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND COLUMN_NAME=?", [$c])) $pdo->exec("ALTER TABLE shipments ADD COLUMN `$c` $def");
@@ -136,7 +160,7 @@ function v4_content(): array {
         'hero_eyebrow' => 'YOUR PAN-INDIA SHIPPING PARTNER', 'hero_h1_a' => 'Big or small.', 'hero_h1_b' => 'We ship it', 'hero_h1_c' => 'all.',
         'hero_text' => 'From everyday parcels to heavy cargo, we bring reliable shipping right to your doorstep. Anywhere in India.',
         'hero_checks' => ['Doorstep pickup', 'Pan-India delivery', 'Easy online booking'],
-        'hero_image' => 'https://images.hostinger.com/b08546a2-b494-4b70-9362-857680ba26f0/9dd28a09-6c70-44f6-baf7-66b043399bbe.png',
+        'hero_image' => '/hero.jpg',
         'hero_badge_1' => 'Picked up. On its way.', 'hero_badge_2' => 'Shipping made simple.',
         'hero_tag_1' => 'Connecting India, doorstep to doorstep', 'hero_tag_2' => 'Handled with care. Delivered with confidence.',
         'track_title' => 'Where’s your shipment?', 'track_text' => 'Enter your AWB number to see live status — or log in to see all your shipments.',

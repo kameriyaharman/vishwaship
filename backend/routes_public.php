@@ -117,25 +117,14 @@ route('POST', '/auth/forgot', function () {
 });
 
 // ---------- files ----------
-route('POST', '/files', function () {
-    $u = require_user();
-    $data = (string) req('data');
-    if (str_contains($data, ',')) $data = explode(',', $data, 2)[1];
-    $bin = base64_decode($data, true);
-    if ($bin === false) fail('Invalid file');
-    if (strlen($bin) > 4 * 1024 * 1024) fail('File too large (max 4 MB)');
-    $mime = (string) in('mime', 'application/octet-stream');
-    if (!preg_match('#^(image/(png|jpe?g|webp|gif)|application/pdf)$#', $mime)) fail('Only images or PDF allowed');
-    $id = insert('files', ['user_id' => $u['id'], 'name' => mb_substr((string) in('name', 'file'), 0, 150), 'mime' => $mime, 'data' => $bin]);
-    return ['id' => $id];
-});
 route('GET', '/files/(\d+)', function ($id) {
     $u = require_user();
     $f = one("SELECT * FROM files WHERE id=?", [$id]);
     if (!$f) fail('Not found', 404);
     if ($u['role'] === 'customer' && (int)$f['user_id'] !== (int)$u['id']) {
         // customers may view proofs attached to their own disputes
-        $ok = val("SELECT id FROM weight_disputes WHERE user_id=? AND FIND_IN_SET(?, proof_ids)", [$u['id'], $id]);
+        $ok = val("SELECT id FROM weight_disputes WHERE user_id=? AND FIND_IN_SET(?, proof_ids)", [$u['id'], $id])
+            || val("SELECT m.id FROM ticket_messages m JOIN tickets t ON t.id=m.ticket_id WHERE t.user_id=? AND FIND_IN_SET(?, m.file_ids)", [$u['id'], $id]);
         if (!$ok) fail('Not allowed', 403);
     }
     header('Content-Type: ' . $f['mime']);

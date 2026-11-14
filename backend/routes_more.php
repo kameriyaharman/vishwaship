@@ -28,18 +28,6 @@ route('GET', '/me/ledger', function () {
     return ['items' => $rows, 'opening' => round($opening, 2), 'closing' => round($closing, 2), 'credits' => round($cr, 2), 'debits' => round($dr, 2), 'from' => $from, 'to' => $to];
 });
 
-route('GET', '/me/shipping-charges', function () {
-    $u = require_customer();
-    [$from, $to, $a, $b] = date_range_params();
-    $rows = all("SELECT id, awb, order_no, created_at, to_city, to_pincode, zone, service, payment_mode, weight, vol_weight, chargeable_weight, freight, cod_charge, gst, total, rto_charge, status
-        FROM shipments WHERE user_id=? AND is_draft=0 AND created_at BETWEEN ? AND ? ORDER BY created_at DESC", [$u['id'], $a, $b]);
-    $wd = all("SELECT shipment_id, charged_amount FROM weight_disputes WHERE user_id=? AND status IN ('accepted','resolved') AND charged_amount>0", [$u['id']]);
-    $wdm = []; foreach ($wd as $x) $wdm[$x['shipment_id']] = (float)$x['charged_amount'];
-    foreach ($rows as &$r) { $r['weight_charge'] = $wdm[$r['id']] ?? 0; $r['net'] = round((float)$r['total'] + (float)$r['rto_charge'] + $r['weight_charge'], 2); }
-    if (!empty($_GET['export'])) csv_out("shipping-charges-$from-to-$to.csv", ['AWB', 'Order', 'Date', 'Destination', 'Zone', 'Service', 'Mode', 'Chargeable kg', 'Freight', 'COD charge', 'GST', 'RTO', 'Weight extra', 'Total', 'Status'],
-        array_map(fn($r) => [$r['awb'], $r['order_no'], $r['created_at'], $r['to_city'] . ' ' . $r['to_pincode'], $r['zone'], $r['service'], $r['payment_mode'], $r['chargeable_weight'], $r['freight'], $r['cod_charge'], $r['gst'], $r['rto_charge'], $r['weight_charge'], $r['net'], $r['status']], $rows));
-    return ['items' => $rows, 'total' => round(array_sum(array_column($rows, 'net')), 2), 'from' => $from, 'to' => $to];
-});
 
 // ---------- notification credits ----------
 route('GET', '/me/notif-credits', function () {
@@ -75,7 +63,7 @@ route('GET', '/me/price-list', function () {
         $out[] = ['service' => $r['service'], 'zone' => $r['zone'], 'zone_label' => ZONE_LABEL[$r['zone']], 'first_500' => $f, 'add_500' => $a,
             'kg1' => $f + $a, 'kg2' => $f + 3 * $a, 'kg5' => $f + 9 * $a, 'disabled' => in_array($r['service'], $dis)];
     }
-    return ['items' => $out, 'cod_fixed' => apply_markup((float) setting('cod_fixed', 30), $m), 'cod_pct' => round((float) setting('cod_pct', 1.5) * (1 + $m / 100), 2),
+    return ['items' => $out, 'rto_pct' => (float) setting('rto_pct', 100), 'shipmozo' => shipmozo_on() && !in_array('shipmozo', $dis), 'markup' => $m, 'cod_fixed' => apply_markup((float) setting('cod_fixed', 30), $m), 'cod_pct' => round((float) setting('cod_pct', 1.5) * (1 + $m / 100), 2),
         'gst_pct' => (float) setting('gst_pct', 18), 'vol_divisor' => (float) setting('vol_divisor', 5000), 'services' => service_meta()];
 });
 route('GET', '/me/activity', function () {

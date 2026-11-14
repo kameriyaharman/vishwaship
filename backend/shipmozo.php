@@ -70,9 +70,9 @@ function shipmozo_create(array $s, string $courierId): array {
         'order_id' => $s['order_no'], 'order_date' => date('Y-m-d'), 'order_type' => 'ESSENTIALS',
         'consignee_name' => $s['to_name'], 'consignee_phone' => $s['to_phone'], 'consignee_email' => '', 'consignee_address_line_one' => $s['to_address'],
         'consignee_address_line_two' => '', 'consignee_pin_code' => $s['to_pincode'], 'consignee_city' => $s['to_city'], 'consignee_state' => $s['to_state'],
-        'product_detail' => [['name' => $s['product'] ?: 'Goods', 'sku_number' => $s['order_no'], 'quantity' => 1, 'discount' => '', 'hsn' => '', 'unit_price' => (float) $s['invoice_value'], 'product_category' => 'Other']],
+        'product_detail' => [['name' => $s['product'] ?: 'Goods', 'sku_number' => $s['order_no'], 'quantity' => 1, 'discount' => '', 'hsn' => (string) ($s['hsn'] ?? ''), 'unit_price' => (float) $s['invoice_value'], 'product_category' => 'Other']],
         'payment_type' => $s['payment_mode'] === 'cod' ? 'COD' : 'PREPAID', 'cod_amount' => $s['payment_mode'] === 'cod' ? (string) $s['cod_amount'] : '',
-        'weight' => (string) max(1, (int) round($s['weight'] * 1000)), 'dimensions' => shipmozo_dims($s), 'warehouse_id' => $wh, 'gst_ewaybill_number' => '', 'gstin_number' => '',
+        'weight' => (string) max(1, (int) round($s['weight'] * 1000)), 'dimensions' => shipmozo_dims($s), 'warehouse_id' => $wh, 'gst_ewaybill_number' => (string) ($s['ewaybill_no'] ?? ''), 'gstin_number' => '',
     ], 'Push order', 'Order #' . $s['order_no']);
     if (!$push['ok']) return ['ok' => false, 'error' => 'Shipmozo push-order failed: ' . ($push['error'] ?: 'check keys / warehouse ID')];
     $d = sm_data($push['json']);

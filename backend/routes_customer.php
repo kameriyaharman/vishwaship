@@ -31,6 +31,8 @@ function shipment_filters(array &$p, ?int $userId): string {
     $w = ['is_draft=0'];
     if ($userId) { $w[] = 's.user_id=?'; $p[] = $userId; }
     $tab = $_GET['tab'] ?? 'all';
+    if ($tab === 'undelivered') $tab = 'ndr';
+    if ($tab === 'in_transit_all') { $w[] = "s.status IN ('picked_up','in_transit','out_for_delivery')"; $tab = ''; }
     if ($tab === 'weight_discrepancy') $w[] = 's.wd_open=1';
     elseif ($tab === 'rto') $w[] = "s.status IN ('rto_in_transit','rto_delivered')";
     elseif ($tab && $tab !== 'all') { $w[] = 's.status=?'; $p[] = $tab; }
@@ -43,6 +45,7 @@ function shipment_filters(array &$p, ?int $userId): string {
     if (!empty($_GET['payment'])) { $w[] = 's.payment_mode=?'; $p[] = $_GET['payment']; }
     if (!empty($_GET['state'])) { $w[] = 's.to_state=?'; $p[] = $_GET['state']; }
     if (!empty($_GET['customer'])) { $w[] = 's.user_id=?'; $p[] = (int) $_GET['customer']; }
+    if (!empty($_GET['order_ref'])) { $w[] = 's.order_ref LIKE ?'; $p[] = '%' . $_GET['order_ref'] . '%'; }
     return implode(' AND ', $w);
 }
 
@@ -101,8 +104,10 @@ route('GET', '/me/notifications', function () {
     $ndr = (int) val("SELECT COUNT(*) FROM shipments WHERE user_id=? AND status='ndr' AND ndr_action IS NULL", [$u['id']]);
     if ($ndr) $n[] = ['text' => "$ndr NDR shipment(s) need action", 'href' => '/ndr'];
     if ((float)$u['wallet_balance'] < (float) setting('low_wallet_threshold', 500)) $n[] = ['text' => 'Low wallet balance — recharge to keep booking', 'href' => '/wallet'];
-    if ($u['kyc_status'] !== 'verified') $n[] = ['text' => 'Complete your KYC', 'href' => '/settings'];
-    foreach (all("SELECT id, subject FROM tickets WHERE user_id=? AND reply IS NOT NULL AND status='open' LIMIT 3", [$u['id']]) as $t) $n[] = ['text' => 'Support replied: ' . $t['subject'], 'href' => '/settings'];
+    if (in_array($u['kyc_status'], ['pending', 'rejected'])) $n[] = ['text' => $u['kyc_status'] === 'rejected' ? 'KYC rejected — please re-submit' : 'Complete your KYC', 'href' => '/settings?tab=kyc'];
+    foreach (all("SELECT id, ticket_no, status FROM tickets WHERE user_id=? AND last_reply_by='staff' AND customer_seen_at IS NULL ORDER BY updated_at DESC LIMIT 5", [$u['id']]) as $t)
+        $n[] = ['text' => 'Support update on ' . $t['ticket_no'] . ' (' . str_replace('_', ' ', $t['status']) . ')', 'href' => '/support?ticket=' . $t['id']];
+    if ($u['kyc_status'] === 'submitted') $n[] = ['text' => 'KYC pending approval', 'href' => '/settings?tab=kyc'];
     return ['items' => $n];
 });
 
@@ -160,7 +165,12 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
         'product' => $g('product', ''), 'invoice_value' => $invoice, 'payment_mode' => $payment, 'cod_amount' => $cod,
         'weight' => $w, 'length' => (float) $g('length', 0), 'breadth' => (float) $g('breadth', 0), 'height' => (float) $g('height', 0),
         'pickup_date' => $g('pickup_date') ?: date('Y-m-d'), 'pickup_slot' => $g('pickup_slot') ?: '2 PM – 6 PM', 'service' => $service,
+        'hsn' => mb_substr(trim((string) $g('hsn', '')), 0, 20) ?: null, 'order_ref' => mb_substr(trim((string) $g('order_ref', '')), 0, 60) ?: null,
+        'invoice_file_id' => (int) $g('invoice_file_id', 0) ?: null, 'ewaybill_no' => mb_substr(preg_replace('/\s/', '', (string) $g('ewaybill_no', '')), 0, 30) ?: null,
+        'ewaybill_file_id' => (int) $g('ewaybill_file_id', 0) ?: null,
     ];
+    foreach (['invoice_file_id', 'ewaybill_file_id'] as $fk) if ($data[$fk] && !val("SELECT id FROM files WHERE id=? AND user_id=?", [$data[$fk], $u['id']])) $data[$fk] = null;
+    if (!$draft && $invoice > 50000 && !$data['ewaybill_no'] && !$data['ewaybill_file_id']) fail('E-way bill is required for invoice value above ₹50,000 — enter the e-way bill number or upload it.');
     if ($draft) {
         $data += ['order_no' => next_order_no(), 'is_draft' => 1, 'status' => 'draft'];
         $id = (int) $g('draft_id', 0);
@@ -266,12 +276,6 @@ route('POST', '/me/shipments/bulk', function () {
     return ['booked' => $ok, 'errors' => $errors];
 });
 
-route('POST', '/me/tickets', function () {
-    $u = require_customer();
-    insert('tickets', ['user_id' => $u['id'], 'shipment_id' => in('shipment_id') ?: null, 'subject' => req('subject'), 'message' => req('message')]);
-    return ['ok' => true];
-});
-route('GET', '/me/tickets', function () { $u = require_customer(); return ['items' => all("SELECT * FROM tickets WHERE user_id=? ORDER BY id DESC", [$u['id']])]; });
 
 // ---------- weight discrepancy ----------
 route('GET', '/me/disputes', function () {
@@ -424,18 +428,5 @@ route('PUT', '/me/profile', function () {
     if (isset($d['name']) && !$d['name']) fail('Name is required');
     update('users', $d, 'id=?', [$u['id']]);
     activity((int)$u['id'], 'Updated profile');
-    return public_user(one("SELECT * FROM users WHERE id=?", [$u['id']]));
-});
-route('POST', '/me/kyc', function () {
-    $u = require_customer();
-    $type = strtoupper((string) req('type'));
-    if (!in_array($type, ['GST', 'PAN', 'AADHAAR'])) fail('Choose GST, PAN or Aadhaar');
-    $num = strtoupper(trim((string) req('number')));
-    $d = ['kyc_type' => $type, 'kyc_status' => 'submitted', 'kyc_doc_id' => in('doc_id') ?: null, 'kyc_note' => null];
-    if ($type === 'GST') { if (!preg_match('/^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/', $num)) fail('Invalid GSTIN format'); $d['gstin'] = $num; }
-    if ($type === 'PAN') { if (!preg_match('/^[A-Z]{5}\d{4}[A-Z]$/', $num)) fail('Invalid PAN format'); $d['pan'] = $num; }
-    activity((int)$u['id'], 'Submitted KYC', $type);
-    if ($type === 'AADHAAR') { if (!preg_match('/^\d{12}$/', preg_replace('/\s/', '', $num))) fail('Invalid Aadhaar number'); $d['aadhaar'] = 'XXXX XXXX ' . substr(preg_replace('/\s/', '', $num), -4); }
-    update('users', $d, 'id=?', [$u['id']]);
     return public_user(one("SELECT * FROM users WHERE id=?", [$u['id']]));
 });

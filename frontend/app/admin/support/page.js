@@ -14,7 +14,7 @@ export default function Support() {
   return (
     <>
       <PageHead title="Support & Enquiries" sub="Customer tickets and website contact-form enquiries" />
-      <div className="seg mb12" style={{ overflowX: 'auto', maxWidth: '100%' }}><button className={tab === 'c' ? 'on' : ''} onClick={() => setTab('c')}>Complaints ({cp.data?.counts?.open || 0} new)</button><button className={tab === 'd' ? 'on' : ''} onClick={() => setTab('d')}>Deletion requests ({d.deletions.length})</button><button className={tab === 't' ? 'on' : ''} onClick={() => setTab('t')}>Tickets ({d.tickets.filter((x) => x.status === 'open').length} open)</button><button className={tab === 'e' ? 'on' : ''} onClick={() => setTab('e')}>Enquiries ({d.enquiries.length})</button></div>
+      <div className="seg mb12" style={{ overflowX: 'auto', maxWidth: '100%' }}><button className={tab === 'c' ? 'on' : ''} onClick={() => setTab('c')}>Complaints ({cp.data?.counts?.open || 0} new)</button><button className={tab === 'd' ? 'on' : ''} onClick={() => setTab('d')}>Deletion requests ({d.deletions.length})</button><button className={tab === 'e' ? 'on' : ''} onClick={() => setTab('e')}>Enquiries ({d.enquiries.length})</button></div>
       <div className="card p0 tbl-wrap">
         {tab === 'c' && (
           <table className="tbl"><thead><tr><th>Ticket</th><th>Date</th><th>Name / contact</th><th>Category</th><th>AWB</th><th>Subject</th><th>Status</th></tr></thead>
@@ -27,11 +27,7 @@ export default function Support() {
               <td className="right"><AsyncBtn className="btn btn-red btn-sm" confirmText="Permanently delete this customer and all their data? Settle wallet & COD first." onClick={async () => { await api(`/admin/customers/${x.id}?force=1`, { method: 'DELETE' }); toast('Customer deleted'); reload(); }}>Delete account</AsyncBtn></td></tr>)}
               {!d.deletions.length && <tr><td colSpan={6} className="empty">No deletion requests.</td></tr>}</tbody></table>
         )}
-        {tab === 't' && (
-          <table className="tbl"><thead><tr><th>Date</th><th>Customer</th><th>AWB</th><th>Subject</th><th>Status</th><th></th></tr></thead>
-            <tbody>{d.tickets.map((x) => <tr key={x.id} className="click" onClick={() => setT({ ...x, reply: x.reply || '' })}><td>{dTime(x.created_at)}</td><td>{x.customer}</td><td className="mono">{x.awb || '—'}</td><td>{x.subject}</td><td><Chip s={x.status} /></td><td className="link small">Open</td></tr>)}
-              {!d.tickets.length && <tr><td colSpan={6} className="empty">No tickets.</td></tr>}</tbody></table>
-        )}
+
         {tab === 'e' && (
           <table className="tbl"><thead><tr><th>Date</th><th>Name</th><th>Phone / email</th><th>Message</th><th></th></tr></thead>
             <tbody>{d.enquiries.map((x) => <tr key={x.id}><td>{dTime(x.created_at)}</td><td>{x.name}</td><td>{x.phone} {x.email}</td><td style={{ maxWidth: 420 }}>{x.message}</td><td><AsyncBtn className="link-navy small" onClick={async () => { await api('/admin/enquiries/' + x.id, { method: 'DELETE' }); reload(); }}>Delete</AsyncBtn></td></tr>)}

@@ -50,7 +50,9 @@ export function readFileB64(file) {
   });
 }
 export async function uploadFile(file) {
-  if (file.size > 4 * 1024 * 1024) throw new Error('File too large (max 4 MB)');
+  const isImg = (file.type || '').startsWith('image/');
+  const max = isImg ? 2 : 5;
+  if (file.size > max * 1024 * 1024) throw new Error(`${isImg ? 'Images' : 'Files'} must be under ${max} MB`);
   const data = await readFileB64(file);
   const r = await api('/files', { method: 'POST', body: { name: file.name, mime: file.type, data } });
   return r.id;
@@ -81,7 +83,7 @@ export function qp(name) { if (typeof window === 'undefined') return null; retur
 
 export const STATUS = {
   all: 'All', pickup_pending: 'Pickup pending', picked_up: 'Picked up', in_transit: 'In transit', out_for_delivery: 'Out for delivery',
-  delivered: 'Delivered', rto: 'RTO', ndr: 'NDR', weight_discrepancy: 'Weight discrepancy', rto_in_transit: 'RTO', rto_delivered: 'RTO delivered', cancelled: 'Cancelled',
+  delivered: 'Delivered', rto: 'RTO', ndr: 'NDR', weight_discrepancy: 'Weight discrepancy', rto_in_transit: 'RTO', rto_delivered: 'RTO delivered', cancelled: 'Cancelled', lost: 'Lost', undelivered: 'Undelivered',
 };
 
 export function months(n = 12) { const o = []; const d = new Date(); for (let i = 0; i < n; i++) { const x = new Date(d.getFullYear(), d.getMonth() - i, 1); o.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`); } return o; }

@@ -50,9 +50,10 @@ route('GET', '/admin/dashboard', function () {
 route('GET', '/admin/notifications', function () {
     require_admin();
     $n = [];
-    if ($k = (int) val("SELECT COUNT(*) FROM users WHERE role='customer' AND kyc_status='submitted'")) $n[] = ['text' => "$k KYC submission(s) to verify", 'href' => '/admin/customers?kyc=submitted'];
+    if ($k = (int) val("SELECT COUNT(*) FROM users WHERE role='customer' AND kyc_status='submitted'")) $n[] = ['text' => "$k KYC pending approval", 'href' => '/admin/customers?kyc=submitted'];
+    if ($k = (int) val("SELECT COUNT(*) FROM tickets WHERE last_reply_by='customer' AND status IN ('open','in_progress')")) $n[] = ['text' => "$k ticket(s) waiting for reply", 'href' => '/admin/tickets'];
     if ($k = (int) val("SELECT COUNT(*) FROM weight_disputes WHERE status='disputed' AND delhivery_dispute IS NULL")) $n[] = ['text' => "$k dispute(s) to forward to Delhivery", 'href' => '/admin/disputes'];
-    if ($k = (int) val("SELECT COUNT(*) FROM tickets WHERE status='open'")) $n[] = ['text' => "$k open support ticket(s)", 'href' => '/admin/support'];
+    if ($k = (int) val("SELECT COUNT(*) FROM tickets WHERE status='open'")) $n[] = ['text' => "$k open support ticket(s)", 'href' => '/admin/tickets'];
     if ($k = (int) val("SELECT COUNT(*) FROM complaints WHERE status='open'")) $n[] = ['text' => "$k new customer-care complaint(s)", 'href' => '/admin/support'];
     if ($k = (int) val("SELECT COUNT(*) FROM api_logs WHERE result='failed' AND created_at >= CURDATE()")) $n[] = ['text' => "$k Delhivery API error(s) today", 'href' => '/admin/delhivery'];
     return ['items' => $n];
@@ -98,6 +99,7 @@ function customer_payload(bool $create): array {
     foreach (['name', 'business_name', 'city', 'mobile', 'email', 'gstin', 'pan', 'monthly_volume', 'bank_name', 'bank_account', 'bank_ifsc', 'markup_reason', 'cod_cycle', 'kyc_note'] as $k)
         if (array_key_exists($k, body())) $d[$k] = trim((string) body()[$k]) ?: null;
     foreach (['status', 'kyc_status'] as $k) if (in($k)) $d[$k] = in($k);
+    if (in('kyc_status') && in('kyc_status') !== 'submitted') $d['kyc_reviewed_at'] = date('Y-m-d H:i:s');
     if (array_key_exists('markup_pct', body())) $d['markup_pct'] = (body()['markup_pct'] === '' || body()['markup_pct'] === null) ? null : (float) body()['markup_pct'];
     if (array_key_exists('credit_limit', body())) $d['credit_limit'] = (float) body()['credit_limit'];
     if (isset($d['email'])) $d['email'] = strtolower($d['email']);
@@ -322,9 +324,10 @@ route('POST', '/admin/cod/remit', function () {
     $amt = $gross - $fee;
     $toWallet = (bool) in('to_wallet');
     db()->beginTransaction();
-    $rid = insert('cod_remittances', ['user_id' => $uid, 'amount' => $amt, 'gross' => $gross, 'fee' => $fee, 'shipments' => count($rows), 'utr' => in('utr') ?: ($toWallet ? 'WALLET' : null), 'status' => 'paid', 'remit_date' => date('Y-m-d')]);
+    $rid = insert('cod_remittances', ['user_id' => $uid, 'amount' => $amt, 'gross' => $gross, 'fee' => $fee, 'wallet_used' => $toWallet ? $amt : 0, 'amount_paid' => $toWallet ? 0 : $amt, 'paid_at' => date('Y-m-d H:i:s'), 'shipments' => count($rows), 'utr' => in('utr') ?: ($toWallet ? 'WALLET' : null), 'status' => 'paid', 'remit_date' => date('Y-m-d')]);
     q("UPDATE shipments SET cod_status='remitted', remittance_id=? WHERE id IN (" . implode(',', array_column($rows, 'id')) . ")", [$rid]);
-    if ($toWallet) wallet_txn($uid, 'credit', $amt, 'COD remittance adjusted', 'COD' . $rid, 'cod');
+    update('cod_remittances', ['ref_no' => 'CODR' . str_pad((string) $rid, 6, '0', STR_PAD_LEFT)], 'id=?', [$rid]);
+    if ($toWallet) wallet_txn($uid, 'credit', $amt, 'COD remittance adjusted', 'CODR' . str_pad((string) $rid, 6, '0', STR_PAD_LEFT), 'cod');
     db()->commit();
     return ['ok' => true, 'amount' => $amt];
 });
@@ -491,14 +494,6 @@ route('GET', '/admin/support', function () {
         'enquiries' => all("SELECT * FROM enquiries ORDER BY id DESC LIMIT 200"),
         'deletions' => all("SELECT id, name, business_name, email, mobile, wallet_balance, deletion_requested_at, deletion_reason FROM users WHERE deletion_requested_at IS NOT NULL ORDER BY deletion_requested_at DESC"),
     ];
-});
-route('POST', '/admin/tickets/(\d+)', function ($id) {
-    require_admin('support');
-    $d = [];
-    if (in('reply') !== null) $d['reply'] = in('reply');
-    if (in('status')) $d['status'] = in('status');
-    update('tickets', $d, 'id=?', [$id]);
-    return ['ok' => true];
 });
 route('DELETE', '/admin/enquiries/(\d+)', function ($id) { require_admin('support'); q("DELETE FROM enquiries WHERE id=?", [$id]); return ['ok' => true]; });
 route('POST', '/admin/demo/clear', function () {

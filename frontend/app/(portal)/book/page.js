@@ -5,10 +5,10 @@ import Icon from '@/components/Icon';
 import { useShell } from '@/components/Shell';
 import ShippingLabel from '@/components/Label';
 import { Spinner, toast, Modal } from '@/components/ui';
-import { api, inr, kg, qp, today, dLong } from '@/lib/api';
+import { api, inr, kg, qp, today, dLong, uploadFile } from '@/lib/api';
 import { useConfig } from '@/lib/config';
 
-const EMPTY = { to_name: '', to_phone: '', to_pincode: '', to_city: '', to_state: '', to_address: '', product: '', invoice_value: '', payment_mode: 'prepaid', cod_amount: '', weight: '', length: '', breadth: '', height: '', service: 'surface' };
+const EMPTY = { to_name: '', to_phone: '', to_pincode: '', to_city: '', to_state: '', to_address: '', product: '', invoice_value: '', hsn: '', order_ref: '', invoice_file_id: '', ewaybill_no: '', ewaybill_file_id: '', payment_mode: 'prepaid', cod_amount: '', weight: '', length: '', breadth: '', height: '', service: 'surface' };
 
 function Stepper({ step }) {
   const S = ['Addresses', 'Package', 'Rate & pay', 'AWB'];
@@ -111,6 +111,7 @@ export default function Book() {
     setErr('');
     if (!+f.weight) return setErr('Enter actual weight');
     if (!+f.length || !+f.breadth || !+f.height) return setErr('Enter package size (L × B × H)');
+    if (+f.invoice_value > 50000 && !f.ewaybill_no && !f.ewaybill_file_id) return setErr('E-way bill is required for invoice value above ₹50,000 — enter the number or upload it.');
     setBusy(true);
     try {
       const s = await api('/me/shipments', { method: 'POST', body: { ...f, weight: +f.weight, pickup_id: pickupId, pickup_date: pdate, pickup_slot: slot, draft_id: draftId } });
@@ -177,7 +178,20 @@ export default function Book() {
               <div className="card-h"><h3><Icon name="box" style={{ color: 'var(--orange)' }} />Package</h3><button className="link-navy small" onClick={() => setStep(1)}>← Edit addresses</button></div>
               <div className="grid2">
                 <div className="field"><label>Product / contents</label><input className="input" value={f.product} onChange={set('product')} placeholder="Cotton kurta ×2" /></div>
-                <div className="field"><label>Invoice value (₹)</label><input className="input" type="number" value={f.invoice_value} onChange={set('invoice_value')} /></div>
+                <div className="field"><label>Invoice value (₹)</label><input className="input" type="number" min="0" value={f.invoice_value} onChange={(e) => setF({ ...f, invoice_value: e.target.value.replace(/^-/, '') })} /></div>
+                <div className="field"><label>Product HSN code</label><input className="input" inputMode="numeric" maxLength={8} value={f.hsn} onChange={(e) => setF({ ...f, hsn: e.target.value.replace(/\D/g, '') })} placeholder="e.g. 6204" /></div>
+                <div className="field"><label>Order reference ID <span className="muted">(optional)</span></label><input className="input" value={f.order_ref} onChange={set('order_ref')} placeholder="Your store order no." /></div>
+                <div className="field" style={{ gridColumn: '1 / -1' }}><label>Upload invoice copy <span className="muted">(optional · PDF/image)</span></label>
+                  <DocUpload id={f.invoice_file_id} onChange={(id) => setF((x) => ({ ...x, invoice_file_id: id }))} /></div>
+                {+f.invoice_value > 50000 && (
+                  <div style={{ gridColumn: '1 / -1', background: 'var(--orange-soft)', border: '1px solid var(--orange-line)', borderRadius: 10, padding: 12 }}>
+                    <div className="b small mb8">E-way bill required (invoice value above ₹50,000)</div>
+                    <div className="grid2">
+                      <div className="field"><label>E-way bill number</label><input className="input" inputMode="numeric" maxLength={14} value={f.ewaybill_no} onChange={(e) => setF({ ...f, ewaybill_no: e.target.value.replace(/\D/g, '') })} placeholder="12-digit EWB no." /></div>
+                      <div className="field"><label>Upload e-way bill</label><DocUpload id={f.ewaybill_file_id} onChange={(id) => setF((x) => ({ ...x, ewaybill_file_id: id }))} /></div>
+                    </div>
+                  </div>
+                )}
                 <div className="field"><label>Actual weight (kg)</label><input className="input hl" type="number" step="0.01" value={f.weight} onChange={set('weight')} /></div>
                 <div className="field"><label>Payment mode</label><select className="select" value={f.payment_mode} onChange={set('payment_mode')}><option value="prepaid">Prepaid</option><option value="cod" disabled={pin && !pin.cod}>COD</option></select></div>
                 {f.payment_mode === 'cod' && <div className="field" style={{ gridColumn: '1/-1' }}><label>COD amount to collect (₹)</label><input className="input" type="number" value={f.cod_amount} placeholder={f.invoice_value} onChange={set('cod_amount')} /></div>}
@@ -262,5 +276,22 @@ export default function Book() {
         </Modal>
       )}
     </>
+  );
+}
+
+function DocUpload({ id, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [name, setName] = useState('');
+  return (
+    <div className="row wrap" style={{ gap: 8 }}>
+      <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}>
+        <Icon name="upload" size={14} />{busy ? 'Uploading…' : id ? 'Replace file' : 'Choose file'}
+        <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={async (e) => {
+          const file = e.target.files[0]; if (!file) return; setBusy(true);
+          try { const fid = await uploadFile(file); setName(file.name); onChange(String(fid)); toast('File attached'); } catch (er) { toast(er.message, true); } finally { setBusy(false); e.target.value = ''; }
+        }} />
+      </label>
+      {id && <span className="small green">✓ {name || 'Attached'} <button className="link-navy tiny" onClick={() => { onChange(''); setName(''); }}>Remove</button></span>}
+    </div>
   );
 }

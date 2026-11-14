@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Chip, Spinner, ErrorBox, Modal, AsyncBtn, toast } from '@/components/ui';
+import LabelButton from '@/components/LabelButton';
+import { RaiseTicket } from '@/components/Tickets';
 import { ProgressBar, Timeline } from '@/components/Track';
 import { useShell } from '@/components/Shell';
 import { api, inr, kg, dLong, qp } from '@/lib/api';
@@ -46,10 +48,10 @@ export default function ShipmentDetail() {
       <div className="ph">
         <div><h1>Shipment Details & Tracking</h1><p>AWB {s.awb} · status auto-updated from Delhivery</p></div>
         <div className="row wrap">
-          <a className="btn btn-outline" href={`/label/?id=${s.id}`} target="_blank">Download label</a>
+          {s.status !== 'cancelled' && <LabelButton ids={s.id} small={false} />}
           <a className="btn btn-outline" href={`/invoice/?shipment=${s.id}`} target="_blank">Shipping invoice</a>
           <a className="btn btn-outline" href={`/buyer-invoice/?id=${s.id}`} target="_blank">Buyer invoice</a>
-          <button className="btn btn-outline" onClick={() => { setTk({ subject: `Issue with AWB ${s.awb}`, message: '' }); setTicket(true); }}>Raise ticket</button>
+          <button className="btn btn-outline" onClick={() => setTicket(true)}>Raise ticket</button>
           {s.status === 'pickup_pending' && <AsyncBtn className="btn btn-red" confirmText="Cancel this shipment? The amount will be refunded to your wallet." onClick={async () => { await api(`/me/shipments/${s.id}/cancel`, { method: 'POST' }); toast('Cancelled & refunded'); refresh(); load(s.id); }}>Cancel</AsyncBtn>}
         </div>
       </div>
@@ -84,15 +86,7 @@ export default function ShipmentDetail() {
           <div className="note mt12">Share live tracking:<br /><a className="b blue" href={trackUrl} target="_blank" style={{ wordBreak: 'break-all' }}>{trackUrl.replace(/^https?:\/\//, '')}</a></div>
         </div>
       </div>
-      {ticket && (
-        <Modal title="Raise a support ticket" onClose={() => setTicket(false)}>
-          <div className="col">
-            <input className="input" value={tk.subject} onChange={(e) => setTk({ ...tk, subject: e.target.value })} />
-            <textarea className="textarea" placeholder="Describe the issue" value={tk.message} onChange={(e) => setTk({ ...tk, message: e.target.value })} />
-            <AsyncBtn onClick={async () => { await api('/me/tickets', { method: 'POST', body: { ...tk, shipment_id: s.id } }); toast('Ticket raised — our team will get back to you'); setTicket(false); }}>Submit</AsyncBtn>
-          </div>
-        </Modal>
-      )}
+      {ticket && <RaiseTicket presetRef={s.awb} onClose={() => setTicket(false)} onDone={(r) => { location.href = '/support/?ticket=' + r.id; }} />}
     </>
   );
 }

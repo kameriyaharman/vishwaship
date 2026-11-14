@@ -6,7 +6,7 @@ import { ProgressBar } from '@/components/Track';
 import Icon from '@/components/Icon';
 import { api, inr, kg, dLong, dTime, qp, uploadFile, STATUS } from '@/lib/api';
 
-const ST = ['pickup_pending', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'ndr', 'rto_in_transit', 'rto_delivered', 'cancelled'];
+const ST = ['pickup_pending', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'ndr', 'rto_in_transit', 'rto_delivered', 'lost', 'cancelled'];
 const LBL = { ...STATUS, rto_in_transit: 'RTO in transit' };
 
 export default function AdminShipment() {

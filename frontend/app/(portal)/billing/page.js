@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Chip, Spinner, ErrorBox, AsyncBtn, toast, useLoad, PageHead, Stat } from '@/components/ui';
+import { Chip, Spinner, ErrorBox, AsyncBtn, toast, useLoad, PageHead, Stat, Modal } from '@/components/ui';
+import Icon from '@/components/Icon';
 import { useShell } from '@/components/Shell';
 import { api, download, inr, kg, dTime, dShort, qp, monthLabel } from '@/lib/api';
 
@@ -19,15 +20,15 @@ export default function Billing() {
     <>
       <PageHead title={label} sub="Billing — passbook, COD, charges, recharges, invoices, credit/debit notes and ledger" />
       <div className="pills mb12" style={{ overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4 }}>{VIEWS.map(([k, l]) => <button key={k} className={'pill' + (view === k ? ' on' : '')} onClick={() => go(k)}>{l}</button>)}</div>
-      {['passbook', 'charges', 'recharges', 'credit_notes', 'debit_notes', 'ledger'].includes(view) && (
+      {['passbook', 'recharges', 'credit_notes', 'debit_notes', 'ledger'].includes(view) && (
         <div className="card mb12 row wrap" style={{ alignItems: 'flex-end' }}>
           <div className="field"><label>From</label><input className="input" type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /></div>
           <div className="field"><label>To</label><input className="input" type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} /></div>
         </div>
       )}
       {['passbook', 'recharges', 'credit_notes', 'debit_notes', 'ledger'].includes(view) && <Ledger view={view} range={range} />}
-      {view === 'charges' && <Charges range={range} />}
-      {view === 'cod' && <Cod />}
+      {view === 'charges' && <Charges range={range} setRange={setRange} />}
+      {view === 'cod' && <Cod range={range} setRange={setRange} />}
       {view === 'invoices' && <Invoices />}
       {view === 'notif' && <Notif />}
     </>
@@ -72,42 +73,108 @@ function Ledger({ view, range }) {
   );
 }
 
-function Charges({ range }) {
-  const qs = `from=${range.from}&to=${range.to}`;
-  const { data: d, err, reload } = useLoad(() => api('/me/shipping-charges?' + qs), [qs]);
-  if (err) return <ErrorBox err={err} onRetry={reload} />;
-  if (!d) return <Spinner />;
+function Filters({ range, setRange, fields, vals, setVals, onDownload, onRefresh }) {
   return (
-    <div className="card p0 tbl-wrap">
-      <div className="row between" style={{ padding: '12px 16px' }}><b className="small">{d.items.length} shipments · total {inr(d.total, 2)}</b><AsyncBtn className="btn btn-outline btn-sm" onClick={() => download('/me/shipping-charges?export=1&' + qs, 'shipping-charges.csv')}>Download Excel</AsyncBtn></div>
-      <table className="tbl">
-        <thead><tr><th>AWB</th><th>Date</th><th className="hide-sm">Destination</th><th className="hide-sm">Zone</th><th>Chargeable</th><th className="num">Freight</th><th className="num hide-sm">COD</th><th className="num hide-sm">GST</th><th className="num hide-sm">RTO</th><th className="num hide-sm">Weight extra</th><th className="num">Total</th></tr></thead>
-        <tbody>
-          {d.items.map((s) => <tr key={s.id} className="click" onClick={() => (location.href = '/shipment/?id=' + s.id)}><td className="mono">{s.awb}</td><td>{dShort(s.created_at)}</td><td className="hide-sm">{s.to_city} {s.to_pincode}</td><td className="hide-sm">{s.zone}</td><td>{kg(s.chargeable_weight)}</td>
-            <td className="num">{inr(s.freight, 2)}</td><td className="num hide-sm">{+s.cod_charge ? inr(s.cod_charge, 2) : '—'}</td><td className="num hide-sm">{inr(s.gst, 2)}</td><td className="num hide-sm">{+s.rto_charge ? inr(s.rto_charge, 2) : '—'}</td><td className="num hide-sm">{s.weight_charge ? inr(s.weight_charge, 2) : '—'}</td><td className="num b">{inr(s.net, 2)}</td></tr>)}
-          {!d.items.length && <tr><td colSpan={11} className="empty">No shipments in this period.</td></tr>}
-        </tbody>
-      </table>
+    <div className="card mb12 row wrap" style={{ alignItems: 'flex-end', gap: 10 }}>
+      <div className="field"><label>From</label><input className="input" type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /></div>
+      <div className="field"><label>To</label><input className="input" type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} /></div>
+      {fields.map(([k, l]) => <div key={k} className="field" style={{ flex: '1 1 150px' }}><label>{l}</label><input className="input" placeholder={`Search by ${l.toLowerCase()}`} value={vals[k] || ''} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} /></div>)}
+      <span className="row" style={{ gap: 6 }}>
+        <AsyncBtn className="icon-btn" title="Download" onClick={onDownload} style={{ width: 42, height: 42 }}><Icon name="download" /></AsyncBtn>
+        <button className="icon-btn" title="Refresh" onClick={onRefresh} style={{ width: 42, height: 42 }}><Icon name="undo" style={{ transform: 'scaleX(-1)' }} /></button>
+      </span>
     </div>
   );
 }
+function useDebounced(v, ms = 400) { const [d, setD] = useState(v); useEffect(() => { const t = setTimeout(() => setD(v), ms); return () => clearTimeout(t); }, [v, ms]); return d; }
 
-function Cod() {
-  const { me } = useShell();
-  const { data: d, err, reload } = useLoad(() => api('/me/wallet'), []);
-  if (err) return <ErrorBox err={err} onRetry={reload} />;
-  if (!d) return <Spinner />;
+function Charges({ range, setRange }) {
+  const [vals, setVals] = useState({ order: '', awb: '', order_ref: '' });
+  const dv = useDebounced(vals);
+  const [bd, setBd] = useState(null);
+  const qs = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(dv).filter(([, v]) => v)) }).toString();
+  const { data: d, err, reload, loading } = useLoad(() => api('/me/shipping-charges?' + qs), [qs]);
+  const W = (w) => w.weight == null ? <span className="muted">Awaited</span> : <>{w.weight} kg<div className="tiny muted">{w.dims ? `${w.dims} cm` : '—'}{w.vol != null ? ` · vol ${w.vol} kg` : ''}</div>{w.charged != null && <div className="tiny">Charged on {w.charged} kg</div>}</>;
   return (
     <>
-      <div className="stats mb12">
-        <Stat plain icon="rupee" title="COD pending" value={inr(d.cod_pending)} sub={`next remittance ${dShort(d.next_remittance)}`} subCls="orange" />
-        <Stat plain icon="check" title="Remitted this month" value={inr(d.cod_remitted_month)} sub={d.bank_last4 ? `to bank ••${d.bank_last4}` : 'add bank in Settings'} />
-        <Stat plain icon="clock" title="Remittance cycle" value={<span style={{ fontSize: 18 }}>{me.cod_cycle}</span>} sub={<Link href="/settings/?tab=early-cod" className="link">Get COD faster →</Link>} />
-      </div>
+      <Filters range={range} setRange={setRange} fields={[['order', 'Order ID'], ['awb', 'AWB'], ['order_ref', 'Order Reference ID']]} vals={vals} setVals={setVals}
+        onDownload={() => download('/me/shipping-charges?export=1&' + qs, 'shipping-charges.csv')} onRefresh={reload} />
+      <ErrorBox err={err} onRetry={reload} />
       <div className="card p0 tbl-wrap">
-        <table className="tbl"><thead><tr><th>Date</th><th>Shipments</th><th>UTR / Ref</th><th className="num">COD collected</th><th className="num">Early COD fee</th><th className="num">Remitted</th></tr></thead>
-          <tbody>{d.remittances.map((r) => <tr key={r.id}><td>{dShort(r.remit_date)}</td><td>{r.shipments}</td><td>{r.utr || '—'}</td><td className="num">{inr(r.gross ?? r.amount, 2)}</td><td className="num">{+r.fee ? '−' + inr(r.fee, 2) : '—'}</td><td className="num b">{inr(r.amount, 2)}</td></tr>)}
-            {!d.remittances.length && <tr><td colSpan={6} className="empty">No COD remittances yet.</td></tr>}</tbody></table>
+        {!d ? <Spinner /> : (
+          <table className="tbl">
+            <thead><tr><th>Order Date</th><th>ID & Type</th><th>Tracking Info</th><th>Payment</th><th>Entered Weight & Dims.</th><th>Courier Weight & Dims.</th><th className="num">Entered Weight Charges</th><th className="num">Courier Weight Charges</th></tr></thead>
+            <tbody>
+              {d.items.map((r) => (
+                <tr key={r.id} style={loading ? { opacity: .5 } : undefined}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{dTime(r.created_at)}</td>
+                  <td><Link className="b link-navy" href={'/shipment/?id=' + r.id}>#{r.order_no}</Link>{r.order_ref && <div className="tiny muted">Ref {r.order_ref}</div>}<div className="tiny">{r.type}</div></td>
+                  <td><div className="small b">{r.courier}</div><div className="mono small">{r.awb}</div><div className="tiny muted">{r.status}</div></td>
+                  <td className="small">{inr(r.invoice_value)}<div><span className={'chip c-' + r.payment_mode}>{r.payment_mode === 'cod' ? 'COD' : 'Prepaid'}</span></div>{r.payment_mode === 'cod' && <div className="tiny">COD {inr(r.cod_amount)}</div>}</td>
+                  <td className="small">{W(r.entered)}</td>
+                  <td className="small">{W(r.courier_w)}</td>
+                  <td className="num b">{inr(r.entered_charges, 2)} <button className="link-navy" title="Charge breakdown" onClick={() => setBd(r)}><Icon name="alert" size={13} /></button></td>
+                  <td className={'num b' + (r.courier_charges > r.entered_charges ? ' red' : '')}>{r.courier_charges == null ? <span className="muted small">Awaited</span> : inr(r.courier_charges, 2)}</td>
+                </tr>
+              ))}
+              {!d.items.length && <tr><td colSpan={8} className="empty">No shipments for these filters.</td></tr>}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {d && <div className="small mt8 right muted">{d.items.length} shipments · total charged {inr(d.total, 2)}</div>}
+      {bd && (
+        <Modal title={`Charge breakdown · #${bd.order_no}`} onClose={() => setBd(null)}>
+          <div className="kv"><span>Freight ({bd.courier}, {bd.entered.charged} kg)</span><b>{inr(bd.breakdown.freight, 2)}</b></div>
+          <div className="kv"><span>COD charges</span><b>{bd.breakdown.cod_charge ? inr(bd.breakdown.cod_charge, 2) : '—'}</b></div>
+          <div className="kv"><span>GST {bd.breakdown.gst_pct}%</span><b>{inr(bd.breakdown.gst, 2)}</b></div>
+          <div className="kv"><span>Booking total</span><b>{inr(bd.breakdown.total, 2)}</b></div>
+          {bd.breakdown.weight_extra > 0 && <div className="kv"><span>Weight discrepancy ({bd.breakdown.weight_extra_status})</span><b className="red">+{inr(bd.breakdown.weight_extra, 2)} + GST</b></div>}
+          {bd.breakdown.rto_charge > 0 && <div className="kv"><span>RTO charges</span><b className="red">{inr(bd.breakdown.rto_charge, 2)}</b></div>}
+          <div className="kv" style={{ fontSize: 15 }}><span>Total charged</span><b>{inr(bd.breakdown.grand_total, 2)}</b></div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+function Cod({ range, setRange }) {
+  const [vals, setVals] = useState({ ref: '', utr: '' });
+  const dv = useDebounced(vals);
+  const qs = new URLSearchParams({ from: range.from, to: range.to, ...Object.fromEntries(Object.entries(dv).filter(([, v]) => v)) }).toString();
+  const { data: d, err, reload, loading } = useLoad(() => api('/me/cod-remittances?' + qs), [qs]);
+  const sm = d?.summary;
+  return (
+    <>
+      {sm && (
+        <div className="stats mb12">
+          <Stat plain icon="rupee" title="Total Generated" value={inr(sm.total_generated)} sub="all COD collected" />
+          <Stat plain icon="check" title="Total Paid" value={inr(sm.total_paid)} sub="bank + wallet" subCls="green" />
+          <Stat plain icon="clock" title="Next Remittance" value={inr(sm.next_amount)} sub={`on ${dShort(sm.next_date)}`} subCls="orange" />
+          <Stat plain icon="wallet" title="Total Due" value={inr(sm.total_due)} sub={<Link href="/settings/?tab=early-cod" className="link">Get COD faster →</Link>} />
+        </div>
+      )}
+      <Filters range={range} setRange={setRange} fields={[['ref', 'Reference ID'], ['utr', 'Bank Transaction ID']]} vals={vals} setVals={setVals}
+        onDownload={() => download('/me/cod-remittances?export=1&' + qs, 'cod-remittance-report.csv')} onRefresh={reload} />
+      <ErrorBox err={err} onRetry={reload} />
+      <div className="card p0 tbl-wrap">
+        {!d ? <Spinner /> : (
+          <table className="tbl">
+            <thead><tr><th>Generated Date</th><th>Ref ID</th><th className="num">Generated COD</th><th className="num">ECOD Charge</th><th className="num">Wallet Used</th><th className="num">Net COD Amount</th><th className="num">Amount Paid</th><th>Payment Date</th><th>Bank Transaction ID</th><th>Orders</th><th>Status</th></tr></thead>
+            <tbody>
+              {d.items.map((r) => (
+                <tr key={r.id} style={loading ? { opacity: .5 } : undefined}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{dShort(r.generated_at)}</td><td className="mono small">{r.ref_no}</td><td className="num">{inr(r.generated, 2)}</td>
+                  <td className="num">{r.ecod ? '−' + inr(r.ecod, 2) : '—'}</td><td className="num">{r.wallet_used ? inr(r.wallet_used, 2) : '—'}</td><td className="num b">{inr(r.net, 2)}</td>
+                  <td className="num">{inr(r.paid, 2)}</td><td>{r.paid_at ? dShort(r.paid_at) : '—'}</td><td className="mono small">{r.utr || '—'}</td>
+                  <td><AsyncBtn className="link small" title="Download order list" onClick={() => download(`/me/cod-remittances/${r.id}/orders`, `${r.ref_no}-orders.csv`)}>{r.orders} <Icon name="download" size={12} /></AsyncBtn></td>
+                  <td><Chip s={r.status === 'Pending' ? 'pending' : 'success'} label={r.status} /></td>
+                </tr>
+              ))}
+              {!d.items.length && <tr><td colSpan={11} className="empty">No COD remittances for these filters.</td></tr>}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );

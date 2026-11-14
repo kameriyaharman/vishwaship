@@ -66,7 +66,7 @@ function delhivery_create_shipment(array $s, string $pickupName): array {
         'products_desc' => $s['product'], 'cod_amount' => $s['payment_mode'] === 'cod' ? $s['cod_amount'] : 0, 'order_date' => date('Y-m-d H:i:s'),
         'total_amount' => $s['invoice_value'], 'seller_name' => $s['from_name'], 'seller_add' => $s['from_address'], 'quantity' => 1,
         'shipment_width' => $s['breadth'], 'shipment_height' => $s['height'], 'shipment_length' => $s['length'], 'weight' => $s['weight'] * 1000,
-        'shipping_mode' => $s['service'] === 'express' ? 'Express' : 'Surface',
+        'shipping_mode' => $s['service'] === 'express' ? 'Express' : 'Surface', 'hsn_code' => (string) ($s['hsn'] ?? ''), 'waybill' => '', 'ewbn' => (string) ($s['ewaybill_no'] ?? ''),
     ]], 'pickup_location' => ['name' => $pickupName]];
     $r = delhivery_http('POST', '/api/cmu/create.json', 'format=json&data=' . urlencode(json_encode($data)), true, 'Create shipment (CMU)', 'Order #' . $s['order_no']);
     $pkg = $r['packages'][0] ?? null;

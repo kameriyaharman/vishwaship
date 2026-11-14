@@ -5,6 +5,7 @@ import { Chip, AsyncBtn, toast, PageHead, Spinner, useLoad } from '@/components/
 import ShippingLabel from '@/components/Label';
 import { useShell } from '@/components/Shell';
 import { api, uploadFile, fileUrl, qp, inr } from '@/lib/api';
+import Icon from '@/components/Icon';
 
 const TABS = [['profile', 'My Profile'], ['kyc', 'Documents & KYC'], ['password', 'Change Password'], ['tracking', 'Branded Tracking'], ['label', 'Label Setting'], ['invoice', 'Invoice settings'],
   ['auto-assign', 'Auto-Assign Rule'], ['notifications', 'Shipping Notification'], ['cod-confirmation', 'COD Confirmation'], ['early-cod', 'Early COD']];
@@ -64,24 +65,75 @@ function Profile() {
   );
 }
 
+function KycDoc({ label, required, id, onChange, hint }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="field">
+      <label>{label} {required ? <span className="red">*</span> : <span className="muted">(optional)</span>}</label>
+      <div className="row wrap" style={{ gap: 8, border: '1px dashed ' + (id ? 'var(--green)' : '#cfd3dc'), borderRadius: 10, padding: 10, background: id ? 'var(--green-soft)' : '#fafaf8' }}>
+        <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer' }}><Icon name="upload" size={14} />{busy ? 'Uploading…' : id ? 'Replace' : 'Upload'}
+          <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={async (e) => { const f = e.target.files[0]; if (!f) return; setBusy(true); try { onChange(await uploadFile(f)); toast(label + ' uploaded'); } catch (er) { toast(er.message, true); } finally { setBusy(false); e.target.value = ''; } }} /></label>
+        {id ? <a className="small green b" href={fileUrl(id)} target="_blank">✓ Uploaded · view</a> : <span className="tiny muted">{hint || 'JPG / PNG (max 2 MB) or PDF (max 5 MB)'}</span>}
+      </div>
+    </div>
+  );
+}
+
 function Kyc() {
   const { me, refresh } = useShell();
-  const [k, setK] = useState({ type: 'GST', number: '', doc_id: null });
+  const [k, setK] = useState({ account_type: me.account_type || 'individual', business_name: me.business_name || '', aadhaar: '', pan: me.pan || '', gstin: me.gstin || '',
+    aadhaar_doc_id: me.aadhaar_doc_id, pan_doc_id: me.pan_doc_id, cheque_doc_id: me.cheque_doc_id, gst_doc_id: me.gst_doc_id,
+    bank_name: me.bank_name || '', bank_account: me.bank_account || '', bank_ifsc: me.bank_ifsc || '' });
+  const set = (x) => (e) => setK({ ...k, [x]: e.target.value });
+  const status = { pending: ['Not submitted', 'pending'], submitted: ['Pending Approval', 'pending'], verified: ['Approved', 'verified'], rejected: ['Rejected', 'rejected'] }[me.kyc_status] || ['—', 'pending'];
+  const locked = me.kyc_status === 'verified' || me.kyc_status === 'submitted';
   return (
-    <div className="card" style={{ maxWidth: 640 }}>
-      <div className="card-h"><h3>Documents & KYC</h3><Chip s={me.kyc_status} /></div>
-      {me.kyc_status === 'verified' ? <p className="small">Your KYC is verified ({me.kyc_type}{me.gstin ? ` · ${me.gstin}` : ''}{me.pan ? ` · PAN ${me.pan}` : ''}). You can book shipments.</p> : (
-        <>
-          {me.kyc_status === 'submitted' && <div className="note mb12">KYC submitted — our team will verify shortly.</div>}
-          {me.kyc_status === 'rejected' && <div className="err mb12">KYC rejected{me.kyc_note ? `: ${me.kyc_note}` : ''}. Please re-submit.</div>}
-          <div className="grid2">
-            <div className="field"><label>Document</label><select className="select" value={k.type} onChange={(e) => setK({ ...k, type: e.target.value })}><option value="GST">GST certificate</option><option value="PAN">PAN card</option><option value="AADHAAR">Aadhaar</option></select></div>
-            <div className="field"><label>{k.type === 'GST' ? 'GSTIN' : k.type === 'PAN' ? 'PAN number' : 'Aadhaar number'}</label><input className="input" value={k.number} onChange={(e) => setK({ ...k, number: e.target.value })} /></div>
-          </div>
-          <div className="field mt12"><label>Upload document (image / PDF, max 4 MB)</label><input type="file" accept="image/*,application/pdf" onChange={async (e) => { try { const id = await uploadFile(e.target.files[0]); setK({ ...k, doc_id: id }); toast('Document uploaded'); } catch (er) { toast(er.message, true); } }} /></div>
-          <AsyncBtn className="btn btn-orange mt12" onClick={async () => { await api('/me/kyc', { method: 'POST', body: k }); await refresh(); toast('KYC submitted'); }}>Submit KYC</AsyncBtn>
-        </>
-      )}
+    <div className="split" style={{ alignItems: 'start' }}>
+      <div className="card col">
+        <div className="row between"><h3 style={{ fontSize: 15 }}>Documents & KYC</h3><Chip s={status[1]} label={status[0]} /></div>
+        {me.kyc_status === 'submitted' && <div className="note">Your KYC is <b>pending approval</b>. Our team is reviewing your documents and bank details — you will see <b>Approved</b> here once done.</div>}
+        {me.kyc_status === 'verified' && <div className="okmsg">KYC approved. You can book shipments. To change bank details, contact support.</div>}
+        {me.kyc_status === 'rejected' && <div className="err">KYC rejected{me.kyc_note ? `: ${me.kyc_note}` : ''}. Please correct and re-submit.</div>}
+        {!locked && (
+          <>
+            <div className="field"><label>Account type</label>
+              <div className="seg"><button className={k.account_type === 'individual' ? 'on' : ''} onClick={() => setK({ ...k, account_type: 'individual' })}>Individual / Proprietor</button><button className={k.account_type === 'company' ? 'on' : ''} onClick={() => setK({ ...k, account_type: 'company' })}>Company</button></div></div>
+            {k.account_type === 'company' && <div className="field"><label>Company name</label><input className="input" value={k.business_name} onChange={set('business_name')} /></div>}
+            <div className="grid2">
+              <div className="field"><label>Aadhaar number <span className="red">*</span></label><input className="input" inputMode="numeric" maxLength={14} value={k.aadhaar} onChange={set('aadhaar')} placeholder={me.aadhaar || '12-digit Aadhaar'} /></div>
+              <div className="field"><label>PAN number <span className="red">*</span></label><input className="input" maxLength={10} value={k.pan} onChange={(e) => setK({ ...k, pan: e.target.value.toUpperCase() })} placeholder="ABCDE1234F" /></div>
+            </div>
+            <div className="grid2">
+              <KycDoc label="Aadhaar card" required id={k.aadhaar_doc_id} onChange={(id) => setK((x) => ({ ...x, aadhaar_doc_id: id }))} hint="Front & back in one file" />
+              <KycDoc label="PAN card" required id={k.pan_doc_id} onChange={(id) => setK((x) => ({ ...x, pan_doc_id: id }))} />
+            </div>
+            <h4 className="mt8" style={{ fontSize: 14 }}>Bank details (COD remittance)</h4>
+            <div className="grid3">
+              <div className="field"><label>Bank name <span className="red">*</span></label><input className="input" value={k.bank_name} onChange={set('bank_name')} /></div>
+              <div className="field"><label>Account number <span className="red">*</span></label><input className="input" inputMode="numeric" value={k.bank_account} onChange={set('bank_account')} /></div>
+              <div className="field"><label>IFSC <span className="red">*</span></label><input className="input" maxLength={11} value={k.bank_ifsc} onChange={(e) => setK({ ...k, bank_ifsc: e.target.value.toUpperCase() })} /></div>
+            </div>
+            <KycDoc label="Cancelled cheque" required id={k.cheque_doc_id} onChange={(id) => setK((x) => ({ ...x, cheque_doc_id: id }))} />
+            {k.account_type === 'company' && (
+              <div className="grid2">
+                <div className="field"><label>GSTIN <span className="muted">(optional)</span></label><input className="input" maxLength={15} value={k.gstin} onChange={(e) => setK({ ...k, gstin: e.target.value.toUpperCase() })} /></div>
+                <KycDoc label="GST certificate" id={k.gst_doc_id} onChange={(id) => setK((x) => ({ ...x, gst_doc_id: id }))} />
+              </div>
+            )}
+            <AsyncBtn className="btn btn-orange" onClick={async () => { await api('/me/kyc', { method: 'POST', body: k }); await refresh(); toast('KYC submitted — pending approval'); }}>Submit KYC for approval</AsyncBtn>
+          </>
+        )}
+      </div>
+      <div className="card" style={{ alignSelf: 'start' }}>
+        <h3 style={{ fontSize: 15 }} className="mb12">Submitted details</h3>
+        <div className="kv"><span>Account type</span><b>{me.account_type === 'company' ? 'Company' : 'Individual'}</b></div>
+        <div className="kv"><span>Aadhaar</span><b>{me.aadhaar || '—'} {me.aadhaar_doc_id && <a className="link small" href={fileUrl(me.aadhaar_doc_id)} target="_blank">view</a>}</b></div>
+        <div className="kv"><span>PAN</span><b>{me.pan || '—'} {me.pan_doc_id && <a className="link small" href={fileUrl(me.pan_doc_id)} target="_blank">view</a>}</b></div>
+        <div className="kv"><span>Bank</span><b>{me.bank_name || '—'} {me.bank_account ? '••' + me.bank_account.slice(-4) : ''} {me.bank_ifsc || ''}</b></div>
+        <div className="kv"><span>Cancelled cheque</span><b>{me.cheque_doc_id ? <a className="link small" href={fileUrl(me.cheque_doc_id)} target="_blank">view</a> : '—'}</b></div>
+        {me.account_type === 'company' && <div className="kv"><span>GST</span><b>{me.gstin || '—'} {me.gst_doc_id && <a className="link small" href={fileUrl(me.gst_doc_id)} target="_blank">view</a>}</b></div>}
+        <div className="kv"><span>Status</span><b><Chip s={status[1]} label={status[0]} /></b></div>
+      </div>
     </div>
   );
 }

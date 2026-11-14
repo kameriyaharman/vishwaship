@@ -51,7 +51,7 @@ export default function Customers() {
                 {d.items.map((u) => (
                   <tr key={u.id} className={'click' + (u.id === selId ? ' sel' : '')} onClick={() => setSelId(u.id)}>
                     <td className="b">{u.business_name || u.name}</td><td className="small">{u.name}<br />{u.mobile}</td>
-                    <td className="small">{u.kyc_status === 'verified' ? <span className="green">✓ {u.kyc_type || 'KYC'}</span> : <Chip s={u.kyc_status} />}</td>
+                    <td className="small">{u.kyc_status === 'verified' ? <span className="green">✓ Approved</span> : <Chip s={u.kyc_status === 'submitted' ? 'pending' : u.kyc_status} label={u.kyc_status === 'submitted' ? 'Pending approval' : u.kyc_status === 'pending' ? 'Not submitted' : u.kyc_status} />}</td>
                     <td className={'num' + (+u.wallet_balance < 0 ? ' red' : '')}>{inr(u.wallet_balance)}</td><td className="num">{u.shipments}</td>
                     <td className="small">{u.markup_pct === null ? `${d.global_markup}% (global)` : <b className="blue">{+u.markup_pct}% custom</b>}</td>
                     <td className="num hide-md">{+u.billed_month ? lakh(u.billed_month) : '—'}</td>
@@ -81,14 +81,28 @@ export default function Customers() {
                 <div className="kv"><span>Shipments</span><b>{c.stats.all} · {c.stats.delivered} delivered · {c.stats.rto} RTO</b></div>
                 <div className="kv"><span>Joined</span><b>{dShort(c.created_at)}</b></div>
               </div>
-              {c.kyc_status === 'submitted' && (
+              {['submitted', 'verified', 'rejected'].includes(c.kyc_status) && (c.aadhaar_doc_id || c.pan_doc_id || c.cheque_doc_id) && (
+                <div className="note mt12" style={{ background: c.kyc_status === 'submitted' ? 'var(--orange-soft)' : undefined }}>
+                  <div className="row between"><b>KYC documents</b><Chip s={c.kyc_status === 'submitted' ? 'pending' : c.kyc_status} label={c.kyc_status === 'submitted' ? 'Pending approval' : c.kyc_status} /></div>
+                  <div className="kv"><span>Type</span><b>{c.account_type === 'company' ? 'Company' : 'Individual'}</b></div>
+                  <div className="kv"><span>Aadhaar</span><b>{c.aadhaar || '—'} {c.aadhaar_doc_id && <a className="link" href={fileUrl(c.aadhaar_doc_id)} target="_blank">View</a>}</b></div>
+                  <div className="kv"><span>PAN</span><b>{c.pan || '—'} {c.pan_doc_id && <a className="link" href={fileUrl(c.pan_doc_id)} target="_blank">View</a>}</b></div>
+                  <div className="kv"><span>Bank</span><b>{c.bank_name} · {c.bank_account} · {c.bank_ifsc}</b></div>
+                  <div className="kv"><span>Cancelled cheque</span><b>{c.cheque_doc_id ? <a className="link" href={fileUrl(c.cheque_doc_id)} target="_blank">View</a> : '—'}</b></div>
+                  {c.account_type === 'company' && <div className="kv"><span>GST</span><b>{c.gstin || '—'} {c.gst_doc_id && <a className="link" href={fileUrl(c.gst_doc_id)} target="_blank">View</a>}</b></div>}
+                  {c.kyc_status === 'submitted' && (
+                    <div className="row mt8">
+                      <button className="btn btn-sm btn-navy" onClick={() => setKycOk(c)}>Approve & set commission</button>
+                      <AsyncBtn className="btn btn-sm btn-outline" onClick={async () => { const n = prompt('Reason for rejection (customer will see this)?'); if (n === null) return; await api('/admin/customers/' + c.id, { method: 'PUT', body: { kyc_status: 'rejected', kyc_note: n } }); refreshAll(); }}>Reject</AsyncBtn>
+                    </div>
+                  )}
+                </div>
+              )}
+              {c.kyc_status === 'submitted' && !(c.aadhaar_doc_id || c.pan_doc_id || c.cheque_doc_id) && (
                 <div className="note mt12">
                   <b>KYC submitted</b> — {c.kyc_type} {c.kyc_type === 'GST' ? c.gstin : c.kyc_type === 'PAN' ? c.pan : c.aadhaar}
                   {c.kyc_doc_id && <> · <a className="link" href={fileUrl(c.kyc_doc_id)} target="_blank">View document</a></>}
-                  <div className="row mt8">
-                    <button className="btn btn-sm btn-navy" onClick={() => setKycOk(c)}>Approve & set commission</button>
-                    <AsyncBtn className="btn btn-sm btn-outline" onClick={async () => { const n = prompt('Reason for rejection?'); if (n === null) return; await api('/admin/customers/' + c.id, { method: 'PUT', body: { kyc_status: 'rejected', kyc_note: n } }); refreshAll(); }}>Reject</AsyncBtn>
-                  </div>
+                  <div className="row mt8"><button className="btn btn-sm btn-navy" onClick={() => setKycOk(c)}>Approve & set commission</button></div>
                 </div>
               )}
               <div className="grid2 mt16" style={{ gap: 8 }}>

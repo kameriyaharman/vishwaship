@@ -1,10 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Icon from '@/components/Icon';
+import LabelButton from '@/components/LabelButton';
 import { Chip, Spinner, ErrorBox, Modal, toast, AsyncBtn, useLoad } from '@/components/ui';
 import { api, download, inr, kg, dShort, qp, STATUS } from '@/lib/api';
 
-const TABS = ['all', 'pickup_pending', 'in_transit', 'out_for_delivery', 'delivered', 'rto', 'ndr', 'weight_discrepancy'];
+const TABS = ['all', 'pickup_pending', 'in_transit', 'out_for_delivery', 'delivered', 'rto', 'ndr', 'lost', 'weight_discrepancy'];
+const EXTRA_TAB = { in_transit_all: 'In transit (all)', undelivered: 'Undelivered' };
 const SAMPLE = 'to_name,to_phone,to_pincode,to_address,to_city,to_state,product,invoice_value,payment_mode,cod_amount,weight,length,breadth,height,service\nSneha Patil,9700000045,411001,"Flat 304, Green Park Society, Camp",Pune,Maharashtra,Cotton kurta,1450,prepaid,,1.0,30,20,10,surface\n';
 
 export default function Shipments() {
@@ -14,7 +17,7 @@ export default function Shipments() {
   const [page, setPage] = useState(1);
   const [bulk, setBulk] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
-  useEffect(() => { const q = qp('q') || ''; const t = qp('tab'); if (t) setTab(t); setF((x) => ({ ...x, q })); setApplied({ q }); }, []);
+  useEffect(() => { const init = { q: qp('q') || '', from: qp('from') || '', to: qp('to') || '' }; const t = qp('tab'); if (t) setTab(t); setF((x) => ({ ...x, ...init })); setApplied(init); }, []);
   const params = () => new URLSearchParams({ tab, page, limit: 50, ...Object.fromEntries(Object.entries({ ...f, ...applied }).filter(([, v]) => v)) }).toString();
   const { data: d, err, reload, loading } = useLoad(() => applied ? api('/me/shipments?' + params()) : Promise.resolve(null), [tab, applied, page]);
   const drafts = useLoad(() => api('/me/drafts'), []);
@@ -33,6 +36,7 @@ export default function Shipments() {
         </div>
       </div>
       <div className="pills mb12">
+        {EXTRA_TAB[tab] && <button className="pill on">{EXTRA_TAB[tab]} · last 30 days</button>}
         {TABS.map((t) => <button key={t} className={'pill' + (tab === t ? ' on' : '')} onClick={() => { setTab(t); setPage(1); }}>{STATUS[t]} {c[t] !== undefined ? (t === 'in_transit' ? c.in_transit + c.picked_up : c[t]).toLocaleString('en-IN') : ''}</button>)}
       </div>
       <form className="card mb12" onSubmit={apply}>
@@ -49,7 +53,7 @@ export default function Shipments() {
       <div className="card p0 tbl-wrap">
         {!d ? <Spinner /> : (
           <table className="tbl">
-            <thead><tr><th>AWB</th><th className="hide-sm">Order</th><th>Route</th><th className="hide-sm">Weight</th><th>Mode</th><th className="num">Rate</th><th>Status</th><th className="hide-sm">Booked</th><th></th></tr></thead>
+            <thead><tr><th>AWB</th><th className="hide-sm">Order</th><th>Route</th><th className="hide-sm">Weight</th><th>Mode</th><th className="num">Rate</th><th>Status</th><th className="hide-sm">Booked</th><th>Actions</th></tr></thead>
             <tbody>
               {d.items.map((s) => (
                 <tr key={s.id} className="click" onClick={() => (location.href = '/shipment/?id=' + s.id)}>
@@ -57,7 +61,12 @@ export default function Shipments() {
                   <td>{s.from_city} {s.from_pincode} → {s.to_city} {s.to_pincode}<div className="tiny muted">{s.to_name}</div></td>
                   <td className="hide-sm">{kg(s.chargeable_weight)}</td><td><Chip s={s.payment_mode} label={s.payment_mode === 'cod' ? 'COD' : 'Prepaid'} /></td>
                   <td className="num">{inr(+s.freight + +s.cod_charge)}</td><td><Chip s={s.status_key} label={s.status_label} /></td>
-                  <td className="hide-sm">{dShort(s.created_at)}</td><td><Link href={'/shipment/?id=' + s.id} className="link small" onClick={(e) => e.stopPropagation()}>Track</Link></td>
+                  <td className="hide-sm">{dShort(s.created_at)}</td>
+                  <td onClick={(e) => e.stopPropagation()}><span className="row-actions">
+                    <Link href={'/shipment/?id=' + s.id} className="link small">Track</Link>
+                    {s.status !== 'cancelled' && <a className="icon-btn" title="Download invoice" href={`/invoice/?shipment=${s.id}`} target="_blank"><Icon name="receipt" size={15} /></a>}
+                    {s.status !== 'cancelled' && <LabelButton ids={s.id} />}
+                  </span></td>
                 </tr>
               ))}
               {!d.items.length && <tr><td colSpan={9} className="empty">No shipments match. <Link className="link" href="/book/">Book a shipment →</Link></td></tr>}

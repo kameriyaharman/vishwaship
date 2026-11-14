@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import LabelButton from '@/components/LabelButton';
 import { Chip, Spinner, ErrorBox, AsyncBtn, toast, useLoad, PageHead } from '@/components/ui';
 import { api, download, inr, kg, lakh, qp, STATUS } from '@/lib/api';
 
@@ -22,7 +23,7 @@ export default function AllShipments() {
   return (
     <>
       <PageHead title="All Shipments" sub="Search by customer, AWB, status · Delhivery base rate vs final rate shown to customer">
-        {sel.length > 0 && <a className="btn btn-outline" href={`/label/?id=${sel.join(',')}`} target="_blank">Print {sel.length} labels</a>}
+        {sel.length > 0 && <span className="row" style={{ gap: 6 }}><span className="small b">{sel.length} selected</span><LabelButton ids={sel} small={false} /></span>}
         <AsyncBtn className="btn btn-outline" onClick={() => download('/admin/shipments?export=1&' + qs(), 'all-shipments.csv')}>Export Excel</AsyncBtn>
         <AsyncBtn className="btn btn-outline" onClick={async () => { const r = await api('/admin/sync', { method: 'POST' }); toast(r.note || `${r.synced} shipments updated`); reload(); }}>Sync status now</AsyncBtn>
       </PageHead>

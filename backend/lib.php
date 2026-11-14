@@ -255,7 +255,7 @@ function add_event(int $shipmentId, string $status, string $label, string $locat
 const STATUS_LABEL = [
     'pickup_pending' => 'Pickup pending', 'picked_up' => 'Picked up', 'in_transit' => 'In transit',
     'out_for_delivery' => 'Out for delivery', 'delivered' => 'Delivered', 'ndr' => 'NDR',
-    'rto_in_transit' => 'RTO', 'rto_delivered' => 'RTO delivered', 'cancelled' => 'Cancelled',
+    'rto_in_transit' => 'RTO', 'rto_delivered' => 'RTO delivered', 'cancelled' => 'Cancelled', 'lost' => 'Lost',
 ];
 
 function api_log(string $api, string $request, string $result, $response = null): void {
