@@ -66,6 +66,10 @@ jobs:
           FTP_DIR: ${{ secrets.FTP_DIR || 'public_html' }}
         run: |
           sudo apt-get install -y -qq lftp >/dev/null
+          # tidy values pasted with spaces / ftp:// prefix / trailing slash
+          FTP_SERVER=$(printf '%s' "$FTP_SERVER" | tr -d '[:space:]' | sed -E 's#^(s?ftps?|https?)://##; s#/.*$##')
+          FTP_USERNAME=$(printf '%s' "$FTP_USERNAME" | tr -d '[:space:]')
+          echo "server length ${#FTP_SERVER}, has colon: $([[ $FTP_SERVER == *:* ]] && echo yes || echo no)"
           lftp -e "
             set ftp:ssl-allow yes; set ftp:ssl-force no; set ssl:verify-certificate no;
             set ftp:passive-mode yes; set ftp:prefer-epsv no;
