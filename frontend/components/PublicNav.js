@@ -9,7 +9,7 @@ export default function PublicNav({ content: c = {} }) {
   const [open, setOpen] = useState(false);
   useEffect(() => setU(getUser()), []);
   const dash = u ? (u.role === 'customer' ? '/dashboard/' : '/admin/') : null;
-  const links = [['Home', '/'], ['Our Services', '/#services'], ['Book a Shipment', '/book/'], ['Track Shipment', '/track/'], ['Customer Care', '/customer-care/'], ['Account', dash || '/login/']];
+  const links = [['Home', '/'], ['Our Services', '/#services'], ['Book a Shipment', '/book/'], ['Rate Calculator', '/shipping-rate-calculator/'], ['Track Shipment', '/track/'], ['Customer Care', '/customer-care/'], ['Account', dash || '/login/']];
   return (
     <>
       <div className="vs-top"><div className="in"><span>{c.topbar_text || 'From your doorstep. To anywhere in India.'}</span>
@@ -42,7 +42,7 @@ export function PublicFooter({ content: c = {} }) {
             <p style={{ margin: '14px 0 4px' }}>{c.contact_phone}</p>
             <a href={`mailto:${c.contact_email}`} style={{ color: 'var(--navy)', fontWeight: 700 }}>{c.contact_email} ↗</a>
           </div>
-          <div><b>Ship with us</b><Link href="/book/">Book a shipment</Link><Link href="/track/">Track your shipment</Link><Link href="/#services">Courier & cargo services</Link><Link href="/#pricing">Pricing</Link><Link href="/customer-care/">Customer Care & Complaints</Link></div>
+          <div><b>Ship with us</b><Link href="/book/">Book a shipment</Link><Link href="/shipping-rate-calculator/">Rate calculator</Link><Link href="/track/">Track your shipment</Link><Link href="/#services">Courier & cargo services</Link><Link href="/#pricing">Pricing</Link><Link href="/customer-care/">Customer Care & Complaints</Link></div>
           <div><b>Your account</b><Link href="/login/">Customer Login</Link><Link href="/signup/">Create an account</Link>{c.franchise_url && <a href={c.franchise_url}>{c.franchise_label || 'Franchise Login'}</a>}</div>
           <div><b>Policies</b><Link href="/privacy/">Privacy Policy</Link><Link href="/refund-policy/">Refund & Cancellation</Link><Link href="/terms/">Terms & Conditions</Link></div>
         </div>

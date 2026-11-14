@@ -477,3 +477,29 @@ input::placeholder, textarea::placeholder { color: #9aa0ad; font-weight: 400; }
 a.stat-link { display: block; color: inherit; cursor: pointer; transition: .15s; }
 a.stat-link:hover { box-shadow: 0 6px 18px rgba(11,31,58,.08); transform: translateY(-1px); }
 a.stat-link:active { transform: scale(.98); }
+/* ===== Public rate calculator page ===== */
+.rp-hero .in { padding-top: 56px; }
+.rp-hero h1 { font-size: 56px; font-weight: 700; }
+.rp-hero p.sub { font-size: 17px; max-width: 560px; }
+.rp-hero .badge { font-size: 12px; padding: 6px 12px; }
+.rp-hero .stats3 b { font-size: 24px; } .rp-hero .stats3 span { font-size: 14px; }
+.rp-hero .stats3 { margin: 34px 0 52px; }
+.vs-btn.rp-ghost { background: transparent; border: 1.5px solid #fff; }
+.vs-btn.rp-ghost:hover { background: rgba(255,255,255,.08); }
+.rp-calc { padding: 22px; margin-top: 8px; border-radius: 22px 22px 0 0; }
+.rp-calc .field label { font-weight: 700; color: var(--navy); }
+.rp-calc .seg button { padding: 11px; font-size: 14.5px; font-weight: 700; }
+.rp-calc .input, .rp-calc .select { height: 46px; }
+.feats .feat b { font-size: 15.5px; } .feats .feat span { font-size: 13.5px; }
+.steps4 div { font-size: 14.5px; font-weight: 700; } .steps4 i { width: 32px; height: 32px; font-size: 14px; }
+@media (max-width: 900px) {
+  .rp-hero h1 { font-size: 36px; }
+  .rp-hero .in { padding-top: 30px; }
+  .rp-calc { border-radius: 18px 18px 0 0; }
+}
+.vs-nav a { white-space: nowrap; }
+@media (max-width: 1360px) and (min-width: 901px) { .vs-nav { gap: 18px; font-size: 14px; } }
+.rp-hero .in { grid-template-columns: 1.3fr 1fr; }
+.rp-hero h1 { font-size: 52px; }
+.rp-wrap { background: #fff; }
+@media (max-width: 900px) { .rp-hero .in { grid-template-columns: 1fr; } .rp-hero h1 { font-size: 34px; } }
