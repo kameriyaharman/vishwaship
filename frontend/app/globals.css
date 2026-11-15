@@ -643,4 +643,4 @@ html.dark .shell .seg { background: var(--gray-soft); }
 html.dark .shell .more-row .ic { background: var(--gray-soft); color: var(--orange); }
 html.dark .shell .more-row.danger { color: #ff7a7a; }
 html.dark .shell .chip { filter: brightness(.9) saturate(1.2); }
-/* asset-version: 2026-11-15b */
+.asset-v20261115b { display: none; }
