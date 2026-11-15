@@ -207,8 +207,10 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
     $gstPct = (float) setting('gst_pct', 18);
     $out = [];
     $dis = $user ? (array) (prefs($user)['disabled_services'] ?? []) : [];
+    $realLive = shipmozo_on() || b2b_on();
     foreach (service_meta() as $svc => $meta) {
         if (setting('delhivery_enabled', '1') !== '1') break;
+        if (!delhivery_live() && $realLive) break; // simulation would hand out fake AWBs next to real couriers
         if (setting("service_{$svc}_enabled", '1') !== '1') continue;
         if ($user && in_array($svc, (array) (prefs($user)['disabled_services'] ?? []))) continue;
         $base = null;
@@ -228,7 +230,7 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
             'gst' => $gst, 'total' => round($freight + $cod + $gst, 2),
         ];
     }
-    if (!in_array('shipmozo', $dis)) foreach (shipmozo_rates($from, $to, max($weight, $vol), $l, $b, $h, $payment, $codAmount, $value ?: $codAmount) as $r) {
+    if (!in_array('shipmozo', $dis)) foreach (shipmozo_rates($from, $to, max($weight, $vol * max(1, $boxes)), $l, $b, $h, $payment, $codAmount, $value ?: $codAmount, max(1, $boxes)) as $r) {
         $freight = apply_markup($r['base'], $markup);
         $gst = round($freight * $gstPct / 100, 2);
         $out[] = ['service' => 'sm_' . $r['courier_id'], 'provider' => 'shipmozo', 'courier_id' => $r['courier_id'], 'name' => $r['name'], 'days' => $r['days'] ?: 'As per courier',
