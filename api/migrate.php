@@ -122,6 +122,9 @@ function migrate(): void {
     q("UPDATE cod_remittances SET amount_paid=amount, paid_at=COALESCE(paid_at, CONCAT(remit_date, ' 12:00:00')) WHERE amount_paid IS NULL AND status='paid'");
     $cc = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
     if (is_array($cc) && (($cc['hero_image'] ?? '') === '' || str_contains((string) ($cc['hero_image'] ?? ''), 'images.hostinger.com'))) { $cc['hero_image'] = '/hero.jpg'; set_setting('content', $cc); }
+    // v11: new support number everywhere (website content + settings)
+    foreach ([['+91 92208 92667', '+91 63984 75325'], ['+91-92208-92667', '+91 63984 75325'], ['92208 92667', '63984 75325'], ['919220892667', '916398475325'], ['9220892667', '6398475325']] as [$a, $b])
+        q("UPDATE settings SET v=REPLACE(v, ?, ?) WHERE v LIKE ?", [$a, $b, '%' . $a . '%']);
     // v10: retry warehouse registration with the fixed Shipmozo title; B2B login errors are not shown to customers
     q("UPDATE pickup_addresses SET b2b_error=NULL WHERE b2b_error LIKE '%login failed%'");
     q("UPDATE pickup_addresses SET sm_error=NULL WHERE sm_warehouse_id IS NULL AND sm_error LIKE '%Special characters%'");
@@ -237,8 +240,8 @@ function default_content(): array {
         ],
         'signup_title_1' => 'Your shipping,', 'signup_title_2' => 'one dashboard.',
         'signup_points' => ['Final rate before you book', 'AWB & label instantly', 'Live status: in transit, delivered, RTO', 'Weight discrepancy details with proof'],
-        'contact_phone' => '+91 92208 92667', 'contact_email' => 'support@vishwaship.com', 'contact_address' => 'Dwarka, New Delhi, India',
-        'whatsapp' => '919220892667',
+        'contact_phone' => '+91 63984 75325', 'contact_email' => 'support@vishwaship.com', 'contact_address' => 'Dwarka, New Delhi, India',
+        'whatsapp' => '916398475325',
         'footer_text' => '© ' . date('Y') . ' Vishwaship. All rights reserved.',
         'terms_text' => "1. Shipments are carried by Delhivery under its terms of carriage.\n2. Declared weight and dimensions must be accurate — re-weighed differences are charged as weight discrepancy.\n3. Prohibited and dangerous goods are not accepted.\n4. Wallet balance is non-refundable except on account closure.\n5. COD amounts are remitted as per the remittance cycle after delivery.",
     ];
