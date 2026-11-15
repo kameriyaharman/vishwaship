@@ -109,7 +109,8 @@ function b2b_ensure_warehouse(array $p, bool $force = false): ?string {
     ], 'Create warehouse', $name);
     $exists = !$r['ok'] && preg_match('/already|exist/i', (string) $r['error']);
     if ($r['ok'] || $exists) { update('pickup_addresses', ['b2b_wh_name' => $name, 'b2b_error' => null], 'id=?', [$p['id']]); return $name; }
-    update('pickup_addresses', ['b2b_error' => mb_substr($r['error'] ?: 'Delhivery B2B did not accept this address', 0, 250)], 'id=?', [$p['id']]);
+    if (!str_contains((string) $r['error'], 'login failed')) // credentials are an admin issue, not the customer's address
+        update('pickup_addresses', ['b2b_error' => mb_substr($r['error'] ?: 'Delhivery B2B did not accept this address', 0, 250)], 'id=?', [$p['id']]);
     return null;
 }
 

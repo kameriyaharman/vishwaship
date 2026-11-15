@@ -17,7 +17,14 @@ function shipmozo_http(string $method, string $path, ?array $payload = null, str
     $j = is_string($res) ? json_decode($res, true) : null;
     $ok = $res !== false && $code >= 200 && $code < 300 && is_array($j) && (($j['result'] ?? '1') . '' !== '0') && (($j['status'] ?? true) !== false);
     api_log('Shipmozo · ' . $api, $label ?: $path, $ok ? 'success' : 'failed', $err ?: $res);
-    return ['ok' => $ok, 'code' => $code, 'json' => $j, 'raw' => $res, 'error' => $err ?: (is_array($j) ? ($j['message'] ?? ($j['error'] ?? '')) : '')];
+    $msg = '';
+    if (is_array($j)) {
+        $msg = (string) ($j['message'] ?? (is_string($j['error'] ?? null) ? $j['error'] : ''));
+        $det = $j['data']['error'] ?? ($j['data']['errors'] ?? ($j['errors'] ?? null));
+        if (is_array($det)) { $flat = []; array_walk_recursive($det, function ($v) use (&$flat) { $flat[] = $v; }); $det = implode('; ', $flat); }
+        if ($det && stripos($msg, (string) $det) === false) $msg = trim(($msg && strcasecmp($msg, 'error') !== 0 ? $msg . ': ' : '') . $det);
+    } elseif (!$err && $res !== false) $msg = 'HTTP ' . $code;
+    return ['ok' => $ok, 'code' => $code, 'json' => $j, 'raw' => $res, 'error' => $err ?: $msg];
 }
 
 /** pull a value from a response row using several possible key names */
@@ -72,8 +79,8 @@ function shipmozo_ensure_warehouse(array $p, bool $force = false): ?string {
     if (!shipmozo_on()) return null;
     $phone = substr(preg_replace('/\D/', '', (string) $p['phone']), -10);
     $body = [
-        'address_title' => mb_substr('VS' . $p['user_id'] . '-' . $p['id'] . ' ' . $p['name'], 0, 60),
-        'name' => $p['contact'] ?: $p['name'], 'phone' => (int) $phone, 'email' => (string) (val("SELECT email FROM users WHERE id=?", [$p['user_id']]) ?: ''),
+        'address_title' => mb_substr(trim(preg_replace('/\s+/', ' ', preg_replace('/[^A-Za-z0-9 ]/', ' ', 'VS' . $p['user_id'] . ' ' . $p['id'] . ' ' . $p['name']))), 0, 50),
+        'name' => trim(preg_replace('/[^A-Za-z0-9 .]/', ' ', (string) ($p['contact'] ?: $p['name']))), 'phone' => (int) $phone, 'email' => (string) (val("SELECT email FROM users WHERE id=?", [$p['user_id']]) ?: ''),
         'address_line_one' => mb_substr((string) $p['address'], 0, 190), 'address_line_two' => trim(($p['city'] ?? '') . ', ' . ($p['state'] ?? ''), ', '),
         'pin_code' => (int) $p['pincode'],
     ];
@@ -95,20 +102,33 @@ function shipmozo_create(array $s, string $courierId): array {
     if (!$wh) return ['ok' => false, 'error' => 'Pickup address is not registered on Shipmozo yet' . ($p && $p['sm_error'] ? ' (' . $p['sm_error'] . ')' : '') . ' — open Pickup addresses and retry.'];
     $push = shipmozo_http('POST', 'push-order', [
         'order_id' => $s['order_no'], 'order_date' => date('Y-m-d'), 'order_type' => 'ESSENTIALS',
-        'consignee_name' => $s['to_name'], 'consignee_phone' => $s['to_phone'], 'consignee_email' => '', 'consignee_address_line_one' => $s['to_address'],
-        'consignee_address_line_two' => '', 'consignee_pin_code' => $s['to_pincode'], 'consignee_city' => $s['to_city'], 'consignee_state' => $s['to_state'],
-        'product_detail' => [['name' => $s['product'] ?: 'Goods', 'sku_number' => $s['order_no'], 'quantity' => 1, 'discount' => '', 'hsn' => (string) ($s['hsn'] ?? ''), 'unit_price' => (float) $s['invoice_value'], 'product_category' => 'Other']],
-        'payment_type' => $s['payment_mode'] === 'cod' ? 'COD' : 'PREPAID', 'cod_amount' => $s['payment_mode'] === 'cod' ? (string) $s['cod_amount'] : '',
-        'weight' => (string) max(1, (int) round($s['weight'] * 1000)), 'dimensions' => shipmozo_dims($s), 'warehouse_id' => $wh, 'gst_ewaybill_number' => (string) ($s['ewaybill_no'] ?? ''), 'gstin_number' => '',
+        'consignee_name' => $s['to_name'], 'consignee_phone' => (int) substr(preg_replace('/\D/', '', (string) $s['to_phone']), -10), 'consignee_email' => '',
+        'consignee_address_line_one' => mb_substr((string) $s['to_address'], 0, 190), 'consignee_address_line_two' => '',
+        'consignee_pin_code' => (int) $s['to_pincode'], 'consignee_city' => (string) $s['to_city'], 'consignee_state' => (string) $s['to_state'],
+        'product_detail' => [['name' => $s['product'] ?: 'Goods', 'sku_number' => $s['order_no'], 'quantity' => 1, 'discount' => '', 'hsn' => (string) ($s['hsn'] ?? ''), 'unit_price' => max(1, (float) $s['invoice_value']), 'product_category' => 'Other']],
+        'payment_type' => $s['payment_mode'] === 'cod' ? 'COD' : 'PREPAID', 'cod_amount' => $s['payment_mode'] === 'cod' ? (string) round((float) $s['cod_amount']) : '',
+        'weight' => max(1, (int) round($s['weight'] * 1000)), 'length' => max(1, (int) round($s['length'] ?: 10)), 'width' => max(1, (int) round($s['breadth'] ?: 10)), 'height' => max(1, (int) round($s['height'] ?: 10)),
+        'warehouse_id' => $wh, 'gst_ewaybill_number' => (string) ($s['ewaybill_no'] ?? ''), 'gstin_number' => '',
     ], 'Push order', 'Order #' . $s['order_no']);
-    if (!$push['ok']) return ['ok' => false, 'error' => 'Shipmozo push-order failed: ' . ($push['error'] ?: 'check keys / warehouse ID')];
+    $dup = !$push['ok'] && preg_match('/already|exist|duplicate/i', (string) $push['error']);
+    if (!$push['ok'] && !$dup) return ['ok' => false, 'error' => 'Shipmozo push-order failed: ' . ($push['error'] ?: 'check keys / warehouse ID')];
     $d = sm_data($push['json']);
     $oid = (string) (is_array($d) ? sm_pick($d, ['order_id', 'refrence_id', 'reference_id', 'id'], $s['order_no']) : $s['order_no']);
     $as = shipmozo_http('POST', 'assign-courier', ['order_id' => $oid, 'courier_id' => $courierId], 'Assign courier', "#$oid → $courierId");
     $ad = sm_data($as['json']);
     $awb = is_array($ad) ? sm_pick($ad, ['awb_number', 'awb', 'waybill']) : null;
-    if (!$as['ok'] || !$awb) return ['ok' => false, 'order_id' => $oid, 'error' => 'Shipmozo assign-courier failed: ' . ($as['error'] ?: 'no AWB returned')];
-    if (setting('shipmozo_schedule_pickup', 'auto') !== 'never') shipmozo_http('POST', 'schedule-pickup', ['order_id' => $oid], 'Schedule pickup', "#$oid");
+    if (!$as['ok'] && !preg_match('/already|assigned/i', (string) $as['error'])) return ['ok' => false, 'order_id' => $oid, 'error' => 'Shipmozo assign-courier failed: ' . ($as['error'] ?: 'no AWB returned')];
+    if (setting('shipmozo_schedule_pickup', 'auto') !== 'never') {
+        $sp = shipmozo_http('POST', 'schedule-pickup', ['order_id' => $oid], 'Schedule pickup', "#$oid");
+        $sd = sm_data($sp['json']);
+        if (!$awb && is_array($sd)) $awb = sm_pick($sd, ['awb_number', 'awb']);
+    }
+    if (!$awb) { // some couriers hand out the AWB a moment later — read the order back
+        $od = shipmozo_http('GET', 'get-order-detail/' . rawurlencode($oid), null, 'Order detail', "#$oid");
+        $j = json_encode($od['json'] ?? []);
+        if (preg_match('/"awb_number"\s*:\s*"?([A-Za-z0-9]+)/', $j, $m)) $awb = $m[1];
+    }
+    if (!$awb) return ['ok' => false, 'order_id' => $oid, 'error' => 'Shipmozo assigned the courier but has not returned an AWB yet — please try again in a minute.'];
     return ['ok' => true, 'awb' => (string) $awb, 'order_id' => $oid];
 }
 
