@@ -199,7 +199,7 @@ function service_meta(): array {
 }
 
 /** Full quote: returns options for surface & express with base + final */
-function quote(string $from, string $to, float $weight, $l, $b, $h, string $payment, float $codAmount, ?array $user, float $value = 0): array {
+function quote(string $from, string $to, float $weight, $l, $b, $h, string $payment, float $codAmount, ?array $user, float $value = 0, int $boxes = 1): array {
     $vol = vol_weight($l, $b, $h);
     $charge = max($weight, $vol);
     $zone = zone_for($from, $to);
@@ -233,6 +233,20 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
         $gst = round($freight * $gstPct / 100, 2);
         $out[] = ['service' => 'sm_' . $r['courier_id'], 'provider' => 'shipmozo', 'courier_id' => $r['courier_id'], 'name' => $r['name'], 'days' => $r['days'] ?: 'As per courier',
             'eta' => $r['eta'] ?: date('Y-m-d', strtotime('+4 days')), 'base' => $r['base'], 'cod_base' => 0, 'freight' => $freight, 'cod_charge' => 0, 'gst' => $gst, 'total' => round($freight + $gst, 2)];
+    }
+    // Delhivery B2B (heavy cargo) — shown from the configured minimum chargeable weight
+    // weight = total of all boxes, L×B×H = one box
+    $b2bKg = max($weight, $vol * max(1, $boxes));
+    if (!in_array('dlvb2b', $dis) && b2b_on() && $b2bKg >= (float) setting('dlvb2b_min_kg', 10)) {
+        $e = b2b_estimate($from, $to, $b2bKg, $l, $b, $h, max(1, $boxes), $payment, $codAmount, $value ?: $codAmount);
+        if ($e) {
+            $freight = apply_markup($e['base'], $markup);
+            $gst = round($freight * $gstPct / 100, 2);
+            $tat = is_numeric($e['tat']) ? (int) $e['tat'] : 5;
+            $out[] = ['service' => 'dlvb2b', 'provider' => 'dlvb2b', 'courier_id' => null, 'name' => 'Delhivery Cargo (B2B)' . ($e['oda'] ? ' · ODA' : ''),
+                'days' => is_numeric($e['tat']) ? $tat . ' days' : '3–7 days', 'eta' => date('Y-m-d', strtotime('+' . $tat . ' days')),
+                'base' => $e['base'], 'cod_base' => 0, 'freight' => $freight, 'cod_charge' => 0, 'gst' => $gst, 'total' => round($freight + $gst, 2)];
+        }
     }
     return ['zone' => $zone, 'zone_label' => ZONE_LABEL[$zone], 'vol_weight' => $vol, 'actual_weight' => $weight,
         'chargeable_weight' => slab_weight($charge), 'raw_chargeable' => $charge, 'markup' => $markup, 'gst_pct' => $gstPct, 'options' => $out];
@@ -301,3 +315,4 @@ function accept_dispute(array $d, string $note = 'Accepted by customer'): void {
 
 require_once __DIR__ . '/delhivery.php';
 require_once __DIR__ . '/shipmozo.php';
+require_once __DIR__ . '/delhivery_b2b.php';
