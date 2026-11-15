@@ -26,7 +26,7 @@ route('POST', '/public/quote', function () {
     if (strlen($from) !== 6 || strlen($to) !== 6) fail('Enter valid 6-digit pincodes');
     $w = (float) req('weight'); if ($w <= 0) fail('Enter weight');
     $u = current_user();
-    return quote($from, $to, $w, in('l', 0), in('b', 0), in('h', 0), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u && $u['role'] === 'customer' ? $u : null);
+    return hide_provider(quote($from, $to, $w, in('l', 0), in('b', 0), in('h', 0), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u && $u['role'] === 'customer' ? $u : null));
 });
 
 function pincode_info(string $pin): array {

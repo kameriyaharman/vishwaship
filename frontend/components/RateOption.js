@@ -42,7 +42,7 @@ export default function RateOption({ o, selected, onSelect, chargeable, showBrea
         <CourierLogo o={o} />
         <div className="ropt-mid">
           <div className="b">{o.name}</div>
-          <div className="tiny muted">{o.via && o.via !== o.carrier ? `via ${o.via} · ` : ''}{o.days}{eta ? ` · ETA ${eta}` : ''}{o.pricing === 'card' ? ' · Vishwaship rate' : ''}</div>
+          <div className="tiny muted">{o.days}{eta ? ` · ETA ${eta}` : ''}</div>
         </div>
         <div className="ropt-price">
           <b>{inr(o.to_pay ? o.receiver_pays : o.total, 2)}</b>

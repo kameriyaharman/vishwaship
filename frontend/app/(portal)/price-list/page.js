@@ -39,7 +39,7 @@ export default function PriceList() {
                     {i === 0 && <td rowSpan={2} className="small">RTO: {d.rto_pct === 100 ? 'same as forward' : d.rto_pct + '% of forward'}<div className="tiny muted">GST {d.gst_pct}% extra</div></td>}
                   </tr>
                 )))}
-                {d.shipmozo && <tr><td className="b">Partner couriers (Shipmozo)</td><td><span className="chip c-in_transit">Air / Surface</span></td><td colSpan={9} className="small muted">Live rates for Blue Dart, Xpressbees, Ekart, DTDC and more are shown at booking, including your plan pricing.</td></tr>}
+                {d.shipmozo && <tr><td className="b">Partner couriers</td><td><span className="chip c-in_transit">Air / Surface</span></td><td colSpan={9} className="small muted">Live rates for Blue Dart, Xpressbees, Ekart, DTDC and more are shown at booking, including your plan pricing.</td></tr>}
               </tbody>
             </table>
           </div>
