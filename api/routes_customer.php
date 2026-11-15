@@ -253,6 +253,15 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
     return one("SELECT * FROM shipments WHERE id=?", [$id]);
 }
 
+route('GET', '/me/shipments/(\d+)/courier-label', function ($id) {
+    $u = require_customer();
+    $s = my_shipment((int) $id, $u);
+    if ($s['provider'] !== 'shipmozo') fail('Courier label is available for Shipmozo shipments');
+    $r = shipmozo_label((string) $s['awb']);
+    if (isset($r['url'])) return ['url' => $r['url']];
+    if (isset($r['pdf']) || isset($r['img'])) return ['data' => (isset($r['pdf']) ? 'data:application/pdf;base64,' : 'data:image/png;base64,') . base64_encode($r['pdf'] ?? $r['img'])];
+    fail($r['error']);
+});
 route('GET', '/me/shipments/(\d+)/b2b-label', function ($id) {
     $u = require_customer();
     $s = my_shipment((int) $id, $u);

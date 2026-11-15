@@ -132,6 +132,22 @@ function shipmozo_create(array $s, string $courierId): array {
     return ['ok' => true, 'awb' => (string) $awb, 'order_id' => $oid];
 }
 
+/** courier's own label from Shipmozo: ['url'=>..] or ['pdf'=>binary] or ['error'=>..] */
+function shipmozo_label(string $awb): array {
+    $r = shipmozo_http('GET', 'get-order-label/' . rawurlencode($awb), null, 'Order label', $awb);
+    if (!$r['ok']) return ['error' => $r['error'] ?: 'Label not available yet'];
+    $d = sm_data($r['json']);
+    $flat = [];
+    if (is_array($d)) array_walk_recursive($d, function ($v, $k) use (&$flat) { $flat[] = [$k, $v]; }); else $flat[] = ['data', $d];
+    foreach ($flat as [$k, $v]) if (is_string($v) && preg_match('#^https?://#', $v)) return ['url' => $v];
+    foreach ($flat as [$k, $v]) if (is_string($v) && strlen($v) > 200) {
+        $b = base64_decode(preg_replace('#^data:[^,]+,#', '', $v), true);
+        if ($b !== false && str_starts_with($b, '%PDF')) return ['pdf' => $b];
+        if ($b !== false && preg_match('/^\x89PNG|^\xFF\xD8/', $b)) return ['img' => $b];
+    }
+    return ['error' => 'Shipmozo returned the label in an unexpected format (see API logs)'];
+}
+
 function shipmozo_track(string $awb): ?array {
     $r = shipmozo_http('GET', 'track-order', ['awb_number' => $awb], 'Track order', $awb);
     if (!$r['ok']) return null;
