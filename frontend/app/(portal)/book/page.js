@@ -207,7 +207,7 @@ export default function Book() {
               <div className="grid2">
                 <div className="field" style={{ gridColumn: '1 / -1' }}><label>Shipment type</label>
                   <div className="seg2">
-                    {[['b2c', 'B2C', 'Parcel to a consumer'], ['b2b', 'B2B', 'Business cargo / heavy, multi-box']].map(([k, l, d]) => (
+                    {[['b2c', 'B2C', 'Under 10 kg parcel'], ['b2b', 'B2B', 'More than 10 kg parcel']].map(([k, l, d]) => (
                       <button type="button" key={k} className={f.ship_type === k ? 'on' : ''} onClick={() => { setManualSvc(false); setF((x) => ({ ...x, ship_type: k, payment_mode: k === 'b2c' && x.payment_mode === 'topay' ? 'prepaid' : x.payment_mode })); }}><b>{l}</b><span>{d}</span></button>
                     ))}
                   </div>
@@ -263,7 +263,7 @@ export default function Book() {
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => setBoxes((bs) => [...bs, { ...NEWBOX }])}><Icon name="plus" size={14} /> Add box</button>
                 <span className="tiny muted" style={{ marginLeft: 10 }}>{boxCount} box{boxCount > 1 ? 'es' : ''} · use Qty for identical cartons</span>
               </div>
-              <div className="note mt12" style={{ background: '#f5f6fa' }}>
+              <div className="note note-soft mt12">
                 <div className="kv"><span>Volumetric weight (Σ L×B×H ÷ {cfg?.vol_divisor || 5000})</span><b>{kg(vol || 0)}</b></div>
                 <div className="kv"><span>Actual weight</span><b>{kg(+f.weight || 0)}</b></div>
                 <div className="kv"><span>Chargeable weight (higher, 500 g slabs)</span><b>{quote ? kg(quote.chargeable_weight) : kg(Math.max(vol || 0, +f.weight || 0))}</b></div>

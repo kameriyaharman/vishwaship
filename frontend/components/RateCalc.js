@@ -24,7 +24,7 @@ export default function RateCalc({ compact = false, loggedIn = false, onQuote })
 
   return (
     <form onSubmit={run}>
-      <div className="seg2 mb12">{[['b2c', 'B2C', 'Parcel'], ['b2b', 'B2B', 'Cargo / heavy']].map(([k, l, d]) => <button type="button" key={k} className={f.kind === k ? 'on' : ''} onClick={() => { setF({ ...f, kind: k }); setRes(null); }}><b>{l}</b><span>{d}</span></button>)}</div>
+      <div className="seg2 mb12">{[['b2c', 'B2C', 'Under 10 kg parcel'], ['b2b', 'B2B', 'More than 10 kg parcel']].map(([k, l, d]) => <button type="button" key={k} className={f.kind === k ? 'on' : ''} onClick={() => { setF({ ...f, kind: k }); setRes(null); }}><b>{l}</b><span>{d}</span></button>)}</div>
       <div className="grid2" style={{ gap: 12 }}>
         <div className="field"><label>Pickup pincode</label><input className="input" inputMode="numeric" maxLength={6} value={f.from} onChange={set('from')} required /></div>
         <div className="field"><label>Delivery pincode</label><input className="input hl" inputMode="numeric" maxLength={6} value={f.to} onChange={set('to')} required /></div>

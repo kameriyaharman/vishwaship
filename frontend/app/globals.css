@@ -654,3 +654,17 @@ html.dark .shell .mh-tile .e { background: var(--gray-soft); }
 html.dark .shell .mh-ic { background: var(--gray-soft); }
 .m-logo { display: block; height: 34px; width: auto; max-width: 190px; object-fit: contain; }
 html.dark .shell .m-logo { background: #fff; border-radius: 8px; padding: 3px 6px; }
+.note-soft { background: #f5f6fa; }
+/* dark theme: booking form surfaces */
+html.dark .shell .boxrow, html.dark .shell .addr-box, html.dark .shell .note, html.dark .shell .note-soft { background: var(--gray-soft); border-color: var(--line); color: var(--text); }
+html.dark .shell .seg2 button { background: var(--gray-soft); border-color: var(--line); }
+html.dark .shell .seg2 button b { color: var(--text); }
+html.dark .shell .seg2 button.on { background: var(--orange-soft); border-color: var(--orange); }
+html.dark .shell .input, html.dark .shell .select, html.dark .shell .textarea { background: #10151f; border-color: var(--line); color: var(--text); }
+html.dark .shell .input.hl, html.dark .shell .select.hl { background: #2a1d14; border-color: #6b3a1c; color: #fff; }
+html.dark .shell .input::placeholder, html.dark .shell .textarea::placeholder { color: #6f7890; }
+html.dark .shell .kv, html.dark .shell .kv b { color: var(--text); border-color: var(--line); }
+html.dark .shell [style*="background: #f"], html.dark .shell [style*="background: '#f"], html.dark .shell [style*="background:#f"] { background: var(--gray-soft) !important; }
+html.dark .shell .prod-row .qty { background: #10151f; }
+html.dark .shell label { color: var(--muted); }
+html.dark .shell .btn-outline { border-color: #3a4560; color: var(--text); background: transparent; }
