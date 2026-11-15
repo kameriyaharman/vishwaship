@@ -8,7 +8,8 @@ import { Spinner, toast, Modal } from '@/components/ui';
 import { api, inr, kg, qp, today, dLong, uploadFile } from '@/lib/api';
 import { useConfig } from '@/lib/config';
 
-const EMPTY = { to_name: '', to_phone: '', to_pincode: '', to_city: '', to_state: '', to_address: '', product: '', invoice_value: '', hsn: '', order_ref: '', invoice_file_id: '', ewaybill_no: '', ewaybill_file_id: '', payment_mode: 'prepaid', cod_amount: '', weight: '', boxes: '1', length: '', breadth: '', height: '', service: 'surface' };
+const EMPTY = { to_name: '', to_phone: '', to_pincode: '', to_city: '', to_state: '', to_address: '', product: '', invoice_value: '', hsn: '', order_ref: '', invoice_file_id: '', ewaybill_no: '', ewaybill_file_id: '', payment_mode: 'prepaid', cod_amount: '', weight: '', boxes: '1', length: '', breadth: '', height: '', service: 'surface', ship_type: 'b2c' };
+const NEWBOX = { l: '', b: '', h: '', n: '1' };
 
 function Stepper({ step }) {
   const S = ['Addresses', 'Package', 'Rate & pay', 'AWB'];
@@ -33,6 +34,10 @@ export default function Book() {
   const [pdate, setPdate] = useState(today());
   const [slot, setSlot] = useState('');
   const [f, setF] = useState(EMPTY);
+  const [boxes, setBoxes] = useState([{ ...NEWBOX }]);
+  const setBox = (i, k, v) => setBoxes((bs) => bs.map((b, j) => (j === i ? { ...b, [k]: v.replace(/[^0-9.]/g, '') } : b)));
+  const boxList = boxes.filter((b) => +b.l && +b.b && +b.h).map((b) => ({ l: +b.l, b: +b.b, h: +b.h, n: Math.max(1, Math.round(+b.n || 1)) }));
+  const boxCount = boxList.reduce((a, b) => a + b.n, 0) || 1;
   const [pin, setPin] = useState(null);
   const [quote, setQuote] = useState(null);
   const [qErr, setQErr] = useState('');
@@ -53,6 +58,7 @@ export default function Book() {
       setDraftId(d.id); setPickupId(d.pickup_id);
       const n = {}; Object.keys(EMPTY).forEach((k) => (n[k] = d[k] == null || d[k] === '0.000' || d[k] === '0.00' ? EMPTY[k] : String(d[k])));
       setF(n);
+      try { const bl = JSON.parse(d.box_list || '[]'); if (bl.length) setBoxes(bl.map((b) => ({ l: String(b.l), b: String(b.b), h: String(b.h), n: String(b.n || 1) }))); else if (+d.length) setBoxes([{ l: String(+d.length), b: String(+d.breadth), h: String(+d.height), n: String(d.boxes || 1) }]); } catch {}
     });
   }, []);
   useEffect(() => { if (cfg && !slot) setSlot(cfg.pickup_slots?.[1] || cfg.pickup_slots?.[0] || ''); }, [cfg, slot]);
@@ -77,7 +83,7 @@ export default function Book() {
     qTimer.current = setTimeout(async () => {
       try {
         setQErr('');
-        const q = await api('/me/quote', { method: 'POST', body: { from: pickup.pincode, to: f.to_pincode, weight: +f.weight, l: +f.length || 0, b: +f.breadth || 0, h: +f.height || 0, payment: f.payment_mode, cod_amount: +f.cod_amount || +f.invoice_value || 0, invoice_value: +f.invoice_value || 0, boxes: +f.boxes || 1 } });
+        const q = await api('/me/quote', { method: 'POST', body: { from: pickup.pincode, to: f.to_pincode, weight: +f.weight, l: boxList[0]?.l || 0, b: boxList[0]?.b || 0, h: boxList[0]?.h || 0, payment: f.payment_mode, cod_amount: +f.cod_amount || +f.invoice_value || 0, invoice_value: +f.invoice_value || 0, boxes: boxCount, box_list: boxList, kind: f.ship_type } });
         setQuote(q);
         if (!manualSvc && q.options.length) {
           const a = me.prefs?.auto_assign || {};
@@ -91,7 +97,7 @@ export default function Book() {
         } else if (!q.options.find((o) => o.service === f.service) && q.options[0]) setF((x) => ({ ...x, service: q.options[0].service }));
       } catch (e) { setQErr(e.message); setQuote(null); }
     }, 350);
-  }, [step, pickup, f.weight, f.boxes, f.length, f.breadth, f.height, f.payment_mode, f.cod_amount, f.invoice_value, f.to_pincode, f.service]);
+  }, [step, pickup, f.weight, JSON.stringify(boxList), f.ship_type, f.payment_mode, f.cod_amount, f.invoice_value, f.to_pincode, f.service]);
 
   const next1 = () => {
     setErr('');
@@ -103,25 +109,25 @@ export default function Book() {
   };
   const saveDraft = async () => {
     try {
-      const r = await api('/me/shipments', { method: 'POST', body: { ...f, pickup_id: pickupId, pickup_date: pdate, pickup_slot: slot, draft: true, draft_id: draftId } });
+      const r = await api('/me/shipments', { method: 'POST', body: { ...f, box_list: boxList, boxes: boxCount, pickup_id: pickupId, pickup_date: pdate, pickup_slot: slot, draft: true, draft_id: draftId } });
       setDraftId(r.draft_id); toast('Draft saved');
     } catch (e) { toast(e.message, true); }
   };
   const confirm = async () => {
     setErr('');
     if (!+f.weight) return setErr('Enter actual weight');
-    if (!+f.length || !+f.breadth || !+f.height) return setErr('Enter package size (L × B × H)');
+    if (!boxList.length || boxList.length !== boxes.length) return setErr('Enter Length, Breadth and Height for every box');
     if (+f.invoice_value > 50000 && !f.ewaybill_no && !f.ewaybill_file_id) return setErr('E-way bill is required for invoice value above ₹50,000 — enter the number or upload it.');
     setBusy(true);
     try {
-      const s = await api('/me/shipments', { method: 'POST', body: { ...f, weight: +f.weight, boxes: +f.boxes || 1, pickup_id: pickupId, pickup_date: pdate, pickup_slot: slot, draft_id: draftId } });
+      const s = await api('/me/shipments', { method: 'POST', body: { ...f, weight: +f.weight, boxes: boxCount, box_list: boxList, length: boxList[0].l, breadth: boxList[0].b, height: boxList[0].h, pickup_id: pickupId, pickup_date: pdate, pickup_slot: slot, draft_id: draftId } });
       setDone(s); setStep(4); refresh(); window.scrollTo(0, 0);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
 
   if (!pickups) return <Spinner />;
   const opt = quote?.options.find((o) => o.service === f.service);
-  const vol = (+f.length * +f.breadth * +f.height) / (cfg?.vol_divisor || 5000);
+  const vol = boxList.reduce((a, b) => a + b.l * b.b * b.h * b.n, 0) / (cfg?.vol_divisor || 5000);
   const trackUrl = done ? `${location.origin}/track/?awb=${done.awb}` : '';
 
   return (
@@ -177,6 +183,13 @@ export default function Book() {
             <div className="card">
               <div className="card-h"><h3><Icon name="box" style={{ color: 'var(--orange)' }} />Package</h3><button className="link-navy small" onClick={() => setStep(1)}>← Edit addresses</button></div>
               <div className="grid2">
+                <div className="field" style={{ gridColumn: '1 / -1' }}><label>Shipment type</label>
+                  <div className="seg2">
+                    {[['b2c', 'B2C', 'Parcel to a consumer'], ['b2b', 'B2B', 'Business cargo / heavy, multi-box']].map(([k, l, d]) => (
+                      <button type="button" key={k} className={f.ship_type === k ? 'on' : ''} onClick={() => { setManualSvc(false); setF((x) => ({ ...x, ship_type: k, payment_mode: k === 'b2c' && x.payment_mode === 'topay' ? 'prepaid' : x.payment_mode })); }}><b>{l}</b><span>{d}</span></button>
+                    ))}
+                  </div>
+                </div>
                 <div className="field"><label>Product / contents</label><input className="input" value={f.product} onChange={set('product')} placeholder="Cotton kurta ×2" /></div>
                 <div className="field"><label>Invoice value (₹)</label><input className="input" type="number" min="0" value={f.invoice_value} onChange={(e) => setF({ ...f, invoice_value: e.target.value.replace(/^-/, '') })} /></div>
                 <div className="field"><label>Product HSN code</label><input className="input" inputMode="numeric" maxLength={8} value={f.hsn} onChange={(e) => setF({ ...f, hsn: e.target.value.replace(/\D/g, '') })} placeholder="e.g. 6204" /></div>
@@ -192,18 +205,28 @@ export default function Book() {
                     </div>
                   </div>
                 )}
-                <div className="field"><label>Actual weight (kg){+f.boxes > 1 ? ' — all boxes together' : ''}</label><input className="input hl" type="number" step="0.01" value={f.weight} onChange={set('weight')} /></div>
-                <div className="field"><label>Number of boxes</label><input className="input" type="number" min="1" step="1" value={f.boxes} onChange={set('boxes')} /><div className="tiny muted" style={{ marginTop: 4 }}>More than 1 box or heavy cargo? Delhivery Cargo (B2B) rates appear automatically.</div></div>
-                <div className="field"><label>Payment mode</label><select className="select" value={f.payment_mode} onChange={set('payment_mode')}><option value="prepaid">Prepaid</option><option value="cod" disabled={pin && !pin.cod}>COD</option></select></div>
+                <div className="field"><label>Actual weight (kg){boxCount > 1 ? ` — all ${boxCount} boxes together` : ''}</label><input className="input hl" type="number" step="0.01" value={f.weight} onChange={set('weight')} /></div>
+                <div className="field"><label>Payment mode</label><select className="select" value={f.payment_mode} onChange={set('payment_mode')}><option value="prepaid">Prepaid</option><option value="cod" disabled={pin && !pin.cod}>COD</option><option value="topay" disabled={f.ship_type !== 'b2b'}>To Pay (FOD){f.ship_type !== 'b2b' ? ' — B2B only' : ''}</option></select>
+                  {f.payment_mode === 'topay' && <div className="tiny muted" style={{ marginTop: 4 }}>Freight is paid by the receiver at delivery.</div>}</div>
                 {f.payment_mode === 'cod' && <div className="field" style={{ gridColumn: '1/-1' }}><label>COD amount to collect (₹)</label><input className="input" type="number" value={f.cod_amount} placeholder={f.invoice_value} onChange={set('cod_amount')} /></div>}
               </div>
-              <div className="grid3 mt12">
-                <div className="field"><label>Length (cm)</label><input className="input hl" type="number" value={f.length} onChange={set('length')} /></div>
-                <div className="field"><label>Breadth (cm)</label><input className="input hl" type="number" value={f.breadth} onChange={set('breadth')} /></div>
-                <div className="field"><label>Height (cm)</label><input className="input hl" type="number" value={f.height} onChange={set('height')} /></div>
+              <div className="boxes mt12">
+                {boxes.map((bx, i) => (
+                  <div className="boxrow" key={i}>
+                    <div className="boxhd"><b>Box {i + 1}</b>{boxes.length > 1 && <button type="button" className="link small red" onClick={() => setBoxes((bs) => bs.filter((_, j) => j !== i))}>Remove</button>}</div>
+                    <div className="boxgrid">
+                      <div className="field"><label>Length (cm)</label><input className="input hl" inputMode="decimal" value={bx.l} onChange={(e) => setBox(i, 'l', e.target.value)} /></div>
+                      <div className="field"><label>Breadth (cm)</label><input className="input hl" inputMode="decimal" value={bx.b} onChange={(e) => setBox(i, 'b', e.target.value)} /></div>
+                      <div className="field"><label>Height (cm)</label><input className="input hl" inputMode="decimal" value={bx.h} onChange={(e) => setBox(i, 'h', e.target.value)} /></div>
+                      <div className="field"><label>Qty</label><input className="input" inputMode="numeric" value={bx.n} onChange={(e) => setBox(i, 'n', e.target.value)} /></div>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setBoxes((bs) => [...bs, { ...NEWBOX }])}><Icon name="plus" size={14} /> Add box</button>
+                <span className="tiny muted" style={{ marginLeft: 10 }}>{boxCount} box{boxCount > 1 ? 'es' : ''} · use Qty for identical cartons</span>
               </div>
               <div className="note mt12" style={{ background: '#f5f6fa' }}>
-                <div className="kv"><span>Volumetric weight (L×B×H ÷ {cfg?.vol_divisor || 5000})</span><b>{kg(vol || 0)}</b></div>
+                <div className="kv"><span>Volumetric weight (Σ L×B×H ÷ {cfg?.vol_divisor || 5000})</span><b>{kg(vol || 0)}</b></div>
                 <div className="kv"><span>Actual weight</span><b>{kg(+f.weight || 0)}</b></div>
                 <div className="kv"><span>Chargeable weight (higher, 500 g slabs)</span><b>{quote ? kg(quote.chargeable_weight) : kg(Math.max(vol || 0, +f.weight || 0))}</b></div>
               </div>
@@ -212,17 +235,19 @@ export default function Book() {
             <div className="card">
               <div className="card-h"><h3><Icon name="rupee" style={{ color: 'var(--orange)' }} />Choose service & final rate</h3></div>
               {qErr && <div className="err mb12">{qErr}</div>}
+              {quote && !quote.options.length && <div className="note small">{f.ship_type === 'b2b' ? 'No B2B / cargo rate for this route yet — try B2C, or contact support for a B2B rate card.' : 'No courier available for this route and weight.'}</div>}
               {!quote ? <p className="muted small">Enter weight to see the final rate.</p> : (
                 <>
                   {quote.options.map((o) => (
                     <div key={o.service} className={'opt' + (f.service === o.service ? ' on' : '')} onClick={() => { setManualSvc(true); setF({ ...f, service: o.service }); }}>
                       <span className="radio" /><div><div className="b">{o.name}</div><div className="tiny muted">{o.days} · ETA {dLong(o.eta).slice(4, 10)}</div></div>
-                      <span className="price">{inr(o.freight + o.cod_charge)}</span>
+                      <span className="price">{o.to_pay ? <span style={{ textAlign: 'right', display: 'block' }}>{inr(o.receiver_pays)}<span className="tiny muted" style={{ display: 'block', fontWeight: 500 }}>paid by receiver</span></span> : inr(o.freight + o.cod_charge)}</span>
                     </div>
                   ))}
                   {opt && (
                     <div className="mt12">
-                      <div className="kv"><span>Freight ({opt.name}, {kg(quote.chargeable_weight)})</span><b>{inr(opt.freight, 2)}</b></div>
+                      {opt.to_pay && <div className="note mb8 small">To Pay (FOD): the courier collects about <b>{inr(opt.receiver_pays, 2)}</b> freight from the receiver at delivery. You pay only the booking fee below.</div>}
+                      <div className="kv"><span>{opt.to_pay ? 'Booking fee' : `Freight (${opt.name}, ${kg(quote.chargeable_weight)})`}</span><b>{inr(opt.freight, 2)}</b></div>
                       <div className="kv"><span>COD charges</span><b>{opt.cod_charge ? inr(opt.cod_charge, 2) : '—'}</b></div>
                       <div className="kv"><span>GST {quote.gst_pct}%</span><b>{inr(opt.gst, 2)}</b></div>
                       <div className="row between mt12"><b style={{ fontSize: 20 }}>Total payable</b><b style={{ fontSize: 22 }}>{inr(opt.total, 2)}</b></div>

@@ -559,3 +559,56 @@ route('POST', '/admin/quote-preview', function () {
     $u = in('customer_id') ? one("SELECT * FROM users WHERE id=?", [(int) in('customer_id')]) : null;
     return quote((string) req('from'), (string) req('to'), (float) req('weight'), in('l', 10), in('b', 10), in('h', 10), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u);
 });
+
+// ---------- carriers registry (Add Carrier) ----------
+// Stores a new carrier partner's API details so its connector can be switched on later.
+// Booking connectors exist for Shipmozo, Delhivery and Delhivery Cargo; other carriers are saved here until their API is wired in.
+function carrier_out(array $c): array {
+    $cred = json_decode((string) ($c['credentials'] ?? ''), true) ?: [];
+    $c['credentials'] = array_map(fn($v) => $v === '' ? '' : str_repeat('•', 6) . substr((string) $v, -3), $cred);
+    $c['credential_keys'] = array_keys($cred);
+    return $c;
+}
+route('GET', '/admin/carriers', function () {
+    require_admin('delhivery');
+    return ['items' => array_map('carrier_out', all("SELECT * FROM carriers ORDER BY id DESC"))];
+});
+route('POST', '/admin/carriers', function () {
+    require_admin('delhivery');
+    $name = trim((string) req('name'));
+    if ($name === '') fail('Carrier name is required');
+    $cred = [];
+    foreach ((array) in('credentials', []) as $k => $v) { $k = preg_replace('/[^a-z0-9_ ]/i', '', (string) $k); if ($k !== '' && trim((string) $v) !== '') $cred[$k] = trim((string) $v); }
+    $id = insert('carriers', ['name' => $name, 'code' => strtolower(preg_replace('/[^a-z0-9]+/i', '_', $name)), 'logo_file_id' => (int) in('logo_file_id', 0) ?: null,
+        'website' => in('website'), 'api_base' => in('api_base'), 'auth_type' => in('auth_type', 'api_key'), 'credentials' => json_encode($cred),
+        'services' => in('services'), 'modes' => in('modes'), 'contact_name' => in('contact_name'), 'contact_phone' => in('contact_phone'), 'contact_email' => in('contact_email'),
+        'notes' => in('notes'), 'status' => 'pending', 'enabled' => 0]);
+    return carrier_out(one("SELECT * FROM carriers WHERE id=?", [$id]));
+});
+route('PUT', '/admin/carriers/(\d+)', function ($id) {
+    require_admin('delhivery');
+    $c = one("SELECT * FROM carriers WHERE id=?", [$id]); if (!$c) fail('Not found', 404);
+    $d = [];
+    foreach (['name', 'website', 'api_base', 'auth_type', 'services', 'modes', 'contact_name', 'contact_phone', 'contact_email', 'notes'] as $k) if (in($k) !== null) $d[$k] = in($k);
+    if (in('logo_file_id') !== null) $d['logo_file_id'] = (int) in('logo_file_id') ?: null;
+    if (in('credentials') !== null) {
+        $cred = json_decode((string) $c['credentials'], true) ?: [];
+        foreach ((array) in('credentials') as $k => $v) { $k = preg_replace('/[^a-z0-9_ ]/i', '', (string) $k); if ($k === '') continue; if ($v === null) unset($cred[$k]); elseif (trim((string) $v) !== '' && !str_contains((string) $v, '•')) $cred[$k] = trim((string) $v); }
+        $d['credentials'] = json_encode($cred);
+    }
+    $d['updated_at'] = date('Y-m-d H:i:s');
+    update('carriers', $d, 'id=?', [$id]);
+    return carrier_out(one("SELECT * FROM carriers WHERE id=?", [$id]));
+});
+route('DELETE', '/admin/carriers/(\d+)', function ($id) { require_admin('delhivery'); q("DELETE FROM carriers WHERE id=?", [$id]); return ['ok' => true]; });
+route('POST', '/admin/carriers/(\d+)/test', function ($id) {
+    require_admin('delhivery');
+    $c = one("SELECT * FROM carriers WHERE id=?", [$id]); if (!$c) fail('Not found', 404);
+    if (!$c['api_base'] || !preg_match('#^https://#', $c['api_base'])) fail('Add the carrier API base URL (https://…) first');
+    $ch = curl_init($c['api_base']);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_NOBODY => false, CURLOPT_FOLLOWLOCATION => false]);
+    curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
+    $msg = $err ? 'Not reachable: ' . $err : 'API server reachable (HTTP ' . $code . ')';
+    update('carriers', ['last_test' => date('d M H:i') . ' · ' . $msg, 'status' => $err ? $c['status'] : ($c['status'] === 'pending' ? 'credentials_saved' : $c['status'])], 'id=?', [$id]);
+    return ['ok' => !$err, 'message' => $msg . ($err ? '' : ' — credentials saved; booking goes live once this carrier\'s connector is enabled.')];
+});

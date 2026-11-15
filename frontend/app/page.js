@@ -49,7 +49,13 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="vs-wrap vs-track" id="track">
+      <div className="vs-wrap vs-partners vs-partners-top">
+        <span className="vs-eyebrow">{c.partners_eyebrow}</span>
+        <LogoSlider logos={c.partner_logos} />
+        <div className="small muted">{c.partners_note}</div>
+      </div>
+
+      <div className="vs-wrap vs-track vs-track-flat" id="track">
         <div className="vs-trackcard">
           <div><h3>{c.track_title}</h3><p className="muted" style={{ margin: '8px 0 0', fontSize: 15 }}>{c.track_text}</p></div>
           <form className="vs-trackform" onSubmit={(e) => { e.preventDefault(); if (awb.trim()) router.push('/track/?awb=' + encodeURIComponent(awb.trim())); }}>
@@ -59,11 +65,6 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="vs-wrap vs-partners">
-        <span className="vs-eyebrow">{c.partners_eyebrow}</span>
-        <LogoSlider logos={c.partner_logos} />
-        <div className="small muted">{c.partners_note}</div>
-      </div>
 
       <section className="vs-sec" id="services">
         <div className="vs-wrap">

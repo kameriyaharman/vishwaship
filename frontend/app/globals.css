@@ -514,3 +514,23 @@ a.stat-link:active { transform: scale(.98); }
 @media (prefers-reduced-motion: reduce) { .lslide-track { animation-duration: 240s !important; } }
 .vs-credit { text-align: center; font-size: 12.5px; color: var(--muted); padding: 14px 0 4px; }
 .vs-credit a { color: var(--orange); font-weight: 700; }
+
+.vs-partners.vs-partners-top { padding: 34px 0 6px; }
+.vs-partners.vs-partners-top .lslide { margin: 18px 0 12px; }
+.vs-track.vs-track-flat { margin-top: 26px; }
+.hdr-ico { position: relative; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; color: var(--navy); }
+.hdr-ico:hover { background: var(--gray-soft); }
+.hdr-ico i { position: absolute; top: 2px; right: 0; background: var(--orange); color: #fff; font-style: normal; font-size: 10px; font-weight: 800; border-radius: 999px; min-width: 16px; height: 16px; display: grid; place-items: center; padding: 0 3px; }
+.awb-link { color: var(--blue); font-weight: 700; font-family: var(--mono); text-decoration: underline; text-underline-offset: 2px; }
+/* ===== booking: shipment type + boxes ===== */
+.seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg2 button { text-align: left; border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 11px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.seg2 button b { font-size: 15px; color: var(--navy); } .seg2 button span { font-size: 12px; color: var(--muted); }
+.seg2 button.on { border-color: var(--orange); background: var(--orange-soft); box-shadow: 0 0 0 3px rgba(240,113,44,.12); }
+.boxes { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.boxrow { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fcfcfd; }
+.boxhd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13.5px; }
+.boxgrid { display: grid; grid-template-columns: 1fr 1fr 1fr 70px; gap: 8px; }
+.boxgrid .field label { font-size: 12px; }
+@media (max-width: 520px) { .boxgrid { grid-template-columns: 1fr 1fr 1fr 56px; gap: 6px; } .boxgrid .input { padding: 0 8px; } }
+.mo-pay.topay, .chip.c-topay { background: #e6efff; color: #2453d6; }

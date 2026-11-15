@@ -69,7 +69,7 @@ export default function MobileOrders({ d, tab, setTab, f, setF, apply, page, set
                   </div>
                   <div className="center mt8">
                     <div className="small">{s.courier_name || `Delhivery ${s.service === 'express' ? 'Express' : 'Surface'}`}</div>
-                    <div className="small" style={{ marginTop: 4 }}>AWB: <button className="mo-awb" onClick={() => copy(s.awb)}>{s.awb} <Icon name="copy" size={13} /></button></div>
+                    <div className="small" style={{ marginTop: 4 }}>AWB: <Link className="mo-awb" href={'/track/?awb=' + encodeURIComponent(s.awb)}>{s.awb}</Link> <button className="mo-copy" style={{ width: 24, height: 24, display: 'inline-grid', verticalAlign: 'middle' }} onClick={() => copy(s.awb)} aria-label="Copy AWB"><Icon name="copy" size={12} /></button></div>
                     <div className="small" style={{ marginTop: 4 }}>Status: <b style={{ color: ST_COLOR[s.status_key] || 'var(--navy)' }}>{s.status_label}</b></div>
                   </div>
                   <div className="mo-sep" />
@@ -79,7 +79,7 @@ export default function MobileOrders({ d, tab, setTab, f, setF, apply, page, set
                       <span style={{ minWidth: 0 }}><b style={{ fontSize: 15 }}>{s.to_name}</b><div className="small muted">{s.to_phone}</div></span>
                     </span>
                     <span className="row" style={{ gap: 8 }}>
-                      <span className={'mo-pay ' + s.payment_mode}>{s.payment_mode === 'cod' ? 'COD' : 'Prepaid'}</span>
+                      <span className={'mo-pay ' + s.payment_mode}>{s.payment_mode === 'cod' ? 'COD' : s.payment_mode === 'topay' ? 'To Pay' : 'Prepaid'}</span>
                       <b style={{ fontSize: 17 }}>{inr(s.payment_mode === 'cod' ? s.cod_amount : s.invoice_value)}</b>
                     </span>
                   </div>

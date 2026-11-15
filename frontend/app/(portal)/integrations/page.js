@@ -60,7 +60,7 @@ function Oms() {
       <div className="card p0 tbl-wrap">
         {!d.data ? <Spinner /> : (
           <table className="tbl"><thead><tr><th>Order</th><th>Created</th><th>Receiver</th><th>Pincode</th><th>Mode</th><th /></tr></thead>
-            <tbody>{d.data.items.map((s) => <tr key={s.id}><td className="b">#{s.order_no}</td><td>{dShort(s.created_at)}</td><td>{s.to_name || '—'}</td><td>{s.to_pincode || '—'}</td><td>{s.payment_mode === 'cod' ? 'COD' : 'Prepaid'}</td>
+            <tbody>{d.data.items.map((s) => <tr key={s.id}><td className="b">#{s.order_no}</td><td>{dShort(s.created_at)}</td><td>{s.to_name || '—'}</td><td>{s.to_pincode || '—'}</td><td>{s.payment_mode === 'cod' ? 'COD' : s.payment_mode === 'topay' ? 'To Pay' : 'Prepaid'}</td>
               <td className="right"><Link className="btn btn-orange btn-sm" href={'/book/?draft=' + s.id}>Ship now</Link> <AsyncBtn className="link-navy small" onClick={async () => { await api('/me/drafts/' + s.id, { method: 'DELETE' }); d.reload(); }}>Delete</AsyncBtn></td></tr>)}
               {!d.data.items.length && <tr><td colSpan={6} className="empty">No pending orders. Use “Save draft” while booking to keep orders here.</td></tr>}</tbody></table>
         )}

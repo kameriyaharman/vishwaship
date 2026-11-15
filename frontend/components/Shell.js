@@ -116,6 +116,9 @@ export default function Shell({ admin = false, children }) {
               <Link href="/admin/customers/" className="btn btn-orange bookbtn" style={{ padding: '8px 14px' }} title="Login as a customer to book on their behalf"><Icon name="plus" size={15} /><span>Book Shipment</span></Link>
             )}
             <div className="grow" />
+            {!admin && (
+              <Link href="/support/" className="hdr-ico" title="Support tickets" aria-label="Support tickets"><Icon name="help" size={20} />{notes.filter((n) => (n.href || '').includes('support')).length > 0 && <i>{notes.filter((n) => (n.href || '').includes('support')).length}</i>}</Link>
+            )}
             <div style={{ position: 'relative' }}>
               <button className="bell" onClick={() => { setShowNotes(!showNotes); setShowMenu(false); }}><Icon name="bell" size={19} />{notes.length > 0 && notes.length}</button>
               {showNotes && (

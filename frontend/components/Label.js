@@ -26,7 +26,7 @@ export default function ShippingLabel({ s, compact, prefs }) {
         <div className="grow"><b>{p.hide_seller_address ? 'RETURN TO' : 'FROM'}</b><div>{p.show_brand && p.brand_name ? p.brand_name : s.from_name}</div>{!p.hide_seller_address && <><div>{s.from_address}</div><div>{s.from_city} {s.from_pincode}</div><div>{s.from_phone}</div></>}</div>
       </div>
       <div className="sep" />
-      <div className="b">{s.payment_mode === 'cod' ? `COD · Collect ₹${(+s.cod_amount).toLocaleString('en-IN')}` : 'PREPAID'} · {+s.weight} kg · {dims} · Order #{s.order_no}</div>
+      <div className="b">{s.payment_mode === 'cod' ? `COD · Collect ₹${(+s.cod_amount).toLocaleString('en-IN')}` : s.payment_mode === 'topay' ? 'TO PAY (FOD) · freight collect' : 'PREPAID'}{+s.boxes > 1 ? ` · ${s.boxes} boxes` : ''} · {+s.weight} kg · {dims} · Order #{s.order_no}</div>
       {!compact && <><div className="sep" /><div>{!p.hide_product && <>Contents: {s.product || '—'}</>}{!p.hide_product && !p.hide_value && ' · '}{!p.hide_value && <>Invoice value ₹{(+s.invoice_value).toLocaleString('en-IN')}</>}{s.hsn ? ` · HSN ${s.hsn}` : ''}{s.ewaybill_no ? ` · E-way bill ${s.ewaybill_no}` : ''}</div><div className="center mt8"><Barcode value={s.order_no} height={30} width={1.3} /></div></>}
       {p.footer_note && <><div className="sep" /><div className="center" style={{ fontSize: 10 }}>{p.footer_note}</div></>}
     </div>

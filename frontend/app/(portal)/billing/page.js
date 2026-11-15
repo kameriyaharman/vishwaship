@@ -110,7 +110,7 @@ function Charges({ range, setRange }) {
                   <td style={{ whiteSpace: 'nowrap' }}>{dTime(r.created_at)}</td>
                   <td><Link className="b link-navy" href={'/shipment/?id=' + r.id}>#{r.order_no}</Link>{r.order_ref && <div className="tiny muted">Ref {r.order_ref}</div>}<div className="tiny">{r.type}</div></td>
                   <td><div className="small b">{r.courier}</div><div className="mono small">{r.awb}</div><div className="tiny muted">{r.status}</div></td>
-                  <td className="small">{inr(r.invoice_value)}<div><span className={'chip c-' + r.payment_mode}>{r.payment_mode === 'cod' ? 'COD' : 'Prepaid'}</span></div>{r.payment_mode === 'cod' && <div className="tiny">COD {inr(r.cod_amount)}</div>}</td>
+                  <td className="small">{inr(r.invoice_value)}<div><span className={'chip c-' + r.payment_mode}>{r.payment_mode === 'cod' ? 'COD' : r.payment_mode === 'topay' ? 'To Pay' : 'Prepaid'}</span></div>{r.payment_mode === 'cod' && <div className="tiny">COD {inr(r.cod_amount)}</div>}</td>
                   <td className="small">{W(r.entered)}</td>
                   <td className="small">{W(r.courier_w)}</td>
                   <td className="num b">{inr(r.entered_charges, 2)} <button className="link-navy" title="Charge breakdown" onClick={() => setBd(r)}><Icon name="alert" size={13} /></button></td>

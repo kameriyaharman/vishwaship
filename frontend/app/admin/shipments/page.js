@@ -50,7 +50,7 @@ export default function AllShipments() {
                   <tr key={s.id} className="click" onClick={() => (location.href = '/admin/shipment/?id=' + s.id)}>
                     <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={sel.includes(s.id)} onChange={(e) => setSel(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} /></td>
                     <td className="mono">{s.awb}</td><td>{s.business_name || s.cname}</td><td>{s.from_city} → {s.to_city}</td><td className="hide-md">{kg(s.chargeable_weight)}</td>
-                    <td><Chip s={s.payment_mode} label={s.payment_mode === 'cod' ? 'COD' : 'Prepaid'} /></td>
+                    <td><Chip s={s.payment_mode} label={s.payment_mode === 'cod' ? 'COD' : s.payment_mode === 'topay' ? 'To Pay' : 'Prepaid'} /></td>
                     <td className="hide-md small">{s.courier_name || 'Delhivery ' + s.service}</td><td className="num">{inr(base)}</td><td className="num">{inr(fin)}</td><td className="num green b">{inr(fin - base)}</td>
                     <td><Chip s={s.status_key} label={s.status_label} /></td>
                   </tr>

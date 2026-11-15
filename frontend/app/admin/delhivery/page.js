@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
 import { Chip, Spinner, ErrorBox, Modal, AsyncBtn, toast, useLoad, PageHead } from '@/components/ui';
-import { api, API, dTime } from '@/lib/api';
+import { api, API, dTime, uploadFile, fileUrl } from '@/lib/api';
 
 const APIS = [['Pincode serviceability', 'before booking'], ['Shipping cost (base rate)', 'rate shown'], ['Create shipment / AWB', 'on confirm'], ['Label / packing slip', 'PDF'], ['Pickup request', 'on booking'], ['Tracking status', 'sync + webhook'], ['Cancel shipment', 'before pickup'], ['NDR action', 're-attempt / RTO']];
 
@@ -19,10 +19,11 @@ export default function Delhivery() {
 
   return (
     <>
-      <PageHead title="Courier API Integrations" sub="Delhivery and Shipmozo — keys are entered here. Customers see the API price + your commission.">
+      <PageHead title="Courier API Integrations" sub="Shipmozo, Delhivery Cargo (B2B), Delhivery and any carrier you add — keys are entered here. Customers see the API price + your commission.">
         <AsyncBtn className="btn btn-outline" onClick={async () => { await save(); const r = await api('/admin/delhivery/test', { method: 'POST' }); toast(r.message, !r.ok); reload(); }}>Test Delhivery</AsyncBtn>
         <AsyncBtn onClick={save}>Save Delhivery</AsyncBtn>
       </PageHead>
+ <Carriers />
  <Shipmozo />
  <DelhiveryB2B />
       <h2 className="mt24 mb12" style={{ fontSize: 18 }}>Delhivery (direct)</h2>
@@ -150,5 +151,82 @@ function DelhiveryB2B() {
       </div>
       <p className="tiny muted mt12">Flow: login (JWT) → pincode-service → freight/estimate → client-warehouse/create (once per customer pickup address) → manifest (LR number) → pickup request → LR label (PDF) → lrn/track → lrn/cancel. {d.shipments} B2B shipment(s) so far.</p>
     </div>
+  );
+}
+
+const CARRIER_PRESETS = ['DTDC', 'DHL', 'TCI Express', 'FedEx', 'Blue Dart', 'Xpressbees', 'Ekart', 'Ecom Express', 'Shadowfax', 'Gati', 'India Post', 'Aramex', 'Other'];
+const AUTH_FIELDS = {
+  api_key: ['API key'],
+  key_secret: ['API key', 'API secret'],
+  user_pass: ['Username', 'Password', 'Customer / account code'],
+  token: ['Access token'],
+  oauth: ['Client ID', 'Client secret', 'Account number'],
+};
+const CSTATUS = { pending: ['pending', 'Details saved'], credentials_saved: ['connected', 'API reachable'], live: ['connected', 'Live'], paused: ['cancelled', 'Paused'] };
+
+function Carriers() {
+  const { data: d, reload } = useLoad(() => api('/admin/carriers'), []);
+  const [edit, setEdit] = useState(null);
+  const items = d?.items || [];
+  return (
+    <div className="card mb16">
+      <div className="card-h"><h3><Icon name="truck" />Carrier partners</h3><button className="btn btn-orange btn-sm" onClick={() => setEdit({})}><Icon name="plus" size={14} /> Add carrier</button></div>
+      {!items.length ? <p className="small muted">Add DTDC, DHL, TCI, FedEx or any new partner — save their API details and contacts here. Shipmozo, Delhivery and Delhivery Cargo are already connected below.</p> : (
+        <div className="col" style={{ gap: 8 }}>
+          {items.map((c) => (
+            <div key={c.id} className="row between" style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px', gap: 10, flexWrap: 'wrap' }}>
+              <span className="row" style={{ gap: 10, minWidth: 0 }}>
+                {c.logo_file_id ? <img src={fileUrl(c.logo_file_id)} alt="" style={{ width: 54, height: 30, objectFit: 'contain' }} /> : <Icon name="truck" size={22} />}
+                <span style={{ minWidth: 0 }}><b>{c.name}</b><div className="tiny muted">{c.api_base || 'No API URL yet'}{c.services ? ' · ' + c.services : ''}</div>{c.last_test && <div className="tiny muted">{c.last_test}</div>}</span>
+              </span>
+              <span className="row" style={{ gap: 8 }}>
+                <Chip s={(CSTATUS[c.status] || CSTATUS.pending)[0]} label={(CSTATUS[c.status] || CSTATUS.pending)[1]} />
+                <AsyncBtn className="btn btn-outline btn-sm" onClick={async () => { try { const r = await api(`/admin/carriers/${c.id}/test`, { method: 'POST' }); toast(r.message, !r.ok); } catch (e) { toast(e.message, true); } reload(); }}>Test</AsyncBtn>
+                <button className="btn btn-outline btn-sm" onClick={() => setEdit(c)}>Edit</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="tiny muted mt12">A saved carrier goes live for booking once its API connector is switched on (built per carrier from their API docs). Until then customers keep booking through Shipmozo / Delhivery, which already cover most of these couriers.</p>
+      {edit && <CarrierForm c={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload(); }} />}
+    </div>
+  );
+}
+
+function CarrierForm({ c, onClose, onDone }) {
+  const isNew = !c.id;
+  const [f, setF] = useState({ name: c.name || '', website: c.website || '', api_base: c.api_base || '', auth_type: c.auth_type || 'api_key', services: c.services || '', modes: c.modes || 'B2C', contact_name: c.contact_name || '', contact_phone: c.contact_phone || '', contact_email: c.contact_email || '', notes: c.notes || '', logo_file_id: c.logo_file_id || '' });
+  const [cred, setCred] = useState(() => ({ ...(c.credentials || {}) }));
+  const [preset, setPreset] = useState(c.name && !CARRIER_PRESETS.includes(c.name) ? 'Other' : (c.name || ''));
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const fields = AUTH_FIELDS[f.auth_type] || AUTH_FIELDS.api_key;
+  const save = async () => {
+    if (!f.name.trim()) return toast('Enter the carrier name', true);
+    const body = { ...f, credentials: Object.fromEntries(fields.map((k) => [k, cred[k] || ''])) };
+    try { await api(isNew ? '/admin/carriers' : `/admin/carriers/${c.id}`, { method: isNew ? 'POST' : 'PUT', body }); toast(isNew ? 'Carrier added' : 'Saved'); onDone(); } catch (e) { toast(e.message, true); }
+  };
+  return (
+    <Modal title={isNew ? 'Add carrier partner' : 'Edit ' + c.name} onClose={onClose} wide>
+      <div className="grid2">
+        <div className="field"><label>Carrier</label><select className="select" value={preset} onChange={(e) => { setPreset(e.target.value); setF({ ...f, name: e.target.value === 'Other' ? '' : e.target.value }); }}><option value="">Select…</option>{CARRIER_PRESETS.map((p) => <option key={p}>{p}</option>)}</select></div>
+        <div className="field"><label>Display name</label><input className="input" value={f.name} onChange={set('name')} placeholder="e.g. DTDC Express" /></div>
+        <div className="field"><label>Shipment types</label><select className="select" value={f.modes} onChange={set('modes')}><option>B2C</option><option>B2B</option><option>B2C + B2B</option><option>International</option></select></div>
+        <div className="field"><label>Services (optional)</label><input className="input" value={f.services} onChange={set('services')} placeholder="Surface, Air, Priority…" /></div>
+        <div className="field" style={{ gridColumn: '1/-1' }}><label>API base URL</label><input className="input" value={f.api_base} onChange={set('api_base')} placeholder="https://api.carrier.com/v1" /></div>
+        <div className="field"><label>Authentication</label><select className="select" value={f.auth_type} onChange={set('auth_type')}><option value="api_key">API key</option><option value="key_secret">API key + secret</option><option value="user_pass">Username + password</option><option value="token">Access token</option><option value="oauth">OAuth (client ID / secret)</option></select></div>
+        <div className="field"><label>Logo (optional)</label><input type="file" accept="image/*" onChange={async (e) => { const file = e.target.files?.[0]; if (!file) return; try { const id = await uploadFile(file); setF((x) => ({ ...x, logo_file_id: id })); toast('Logo uploaded'); } catch (er) { toast(er.message, true); } }} /></div>
+        {fields.map((k) => <div className="field" key={k}><label>{k}</label><input className="input" type={/secret|password|token|key/i.test(k) ? 'password' : 'text'} autoComplete="new-password" value={cred[k] || ''} onChange={(e) => setCred({ ...cred, [k]: e.target.value })} placeholder={!isNew && c.credentials?.[k] ? 'saved — leave blank to keep' : ''} /></div>)}
+        <div className="field"><label>Account manager</label><input className="input" value={f.contact_name} onChange={set('contact_name')} /></div>
+        <div className="field"><label>Phone</label><input className="input" value={f.contact_phone} onChange={set('contact_phone')} /></div>
+        <div className="field"><label>Email</label><input className="input" value={f.contact_email} onChange={set('contact_email')} /></div>
+        <div className="field"><label>Website / API docs</label><input className="input" value={f.website} onChange={set('website')} /></div>
+        <div className="field" style={{ gridColumn: '1/-1' }}><label>Notes</label><textarea className="textarea" value={f.notes} onChange={set('notes')} placeholder="Rate agreement, pickup cut-off, COD remittance cycle…" /></div>
+      </div>
+      <div className="row mt16" style={{ justifyContent: 'space-between' }}>
+        {!isNew ? <AsyncBtn className="btn btn-outline" confirmText={'Remove ' + c.name + '?'} onClick={async () => { await api(`/admin/carriers/${c.id}`, { method: 'DELETE' }); toast('Removed'); onDone(); }}>Remove</AsyncBtn> : <span />}
+        <AsyncBtn onClick={save}>{isNew ? 'Add carrier' : 'Save'}</AsyncBtn>
+      </div>
+    </Modal>
   );
 }
