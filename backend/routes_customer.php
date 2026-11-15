@@ -435,6 +435,8 @@ route('POST', '/me/wallet/recharge', function () {
         if (empty($o['id'])) fail('Payment gateway error. Try again.');
         return ['mode' => 'razorpay', 'order_id' => $o['id'], 'amount' => $amt, 'key' => setting('razorpay_key_id'), 'name' => $u['business_name'] ?: $u['name'], 'email' => $u['email'], 'contact' => $u['mobile']];
     }
+    if ((shipmozo_on() || b2b_on() || delhivery_live()) && setting('allow_test_recharge', '0') !== '1')
+        fail('Online recharge is being activated. Please contact Vishwaship support to add wallet balance.');
     db()->beginTransaction();
     $bal = wallet_txn((int)$u['id'], 'credit', $amt, 'Wallet recharge · UPI (test mode)', 'TEST' . time(), 'recharge');
     db()->commit();

@@ -35,11 +35,11 @@ function sm_pick(array $row, array $keys, $default = null) {
 function sm_data($j) { return is_array($j) ? ($j['data'] ?? $j['result_data'] ?? $j) : []; }
 
 function shipmozo_dims(array $s): array {
-    return [['no_of_box' => '1', 'length' => (string) max(1, (int) round($s['length'] ?? 10)), 'width' => (string) max(1, (int) round($s['breadth'] ?? 10)), 'height' => (string) max(1, (int) round($s['height'] ?? 10))]];
+    return [['no_of_box' => (string) max(1, (int) ($s['boxes'] ?? 1)), 'length' => (string) max(1, (int) round($s['length'] ?? 10)), 'width' => (string) max(1, (int) round($s['breadth'] ?? 10)), 'height' => (string) max(1, (int) round($s['height'] ?? 10))]];
 }
 
 /** Rate options. Returns list of ['courier_id','name','base','days','eta','auto_pickup'] or [] */
-function shipmozo_rates(string $from, string $to, float $kg, $l, $b, $h, string $payment, float $cod, float $value): array {
+function shipmozo_rates(string $from, string $to, float $kg, $l, $b, $h, string $payment, float $cod, float $value, int $boxes = 1): array {
     if (!shipmozo_on()) return [];
     static $cache = [];
     $key = md5(json_encode(func_get_args()));
@@ -48,7 +48,7 @@ function shipmozo_rates(string $from, string $to, float $kg, $l, $b, $h, string 
         'pickup_pincode' => $from, 'delivery_pincode' => $to, 'payment_type' => $payment === 'cod' ? 'COD' : 'PREPAID', 'shipment_type' => 'FORWARD',
         'order_amount' => (string) max(1, round($value ?: $cod ?: 100)), 'type_of_package' => setting('shipmozo_package_type', 'SPS'), 'rov_type' => setting('shipmozo_rov_type', 'ROV_OWNER'),
         'cod_amount' => $payment === 'cod' ? (string) round($cod) : '', 'weight' => (string) max(1, (int) round($kg * 1000)),
-        'dimensions' => shipmozo_dims(['length' => $l, 'breadth' => $b, 'height' => $h]),
+        'dimensions' => shipmozo_dims(['length' => $l, 'breadth' => $b, 'height' => $h, 'boxes' => $boxes]),
     ], 'Rate calculator', "$from → $to · $kg kg");
     $out = [];
     if ($r['ok']) foreach ((array) sm_data($r['json']) as $row) {
