@@ -107,15 +107,15 @@ export default function Shell({ admin = false, children }) {
           {imp && <div className="imp-bar">You are viewing as {me.business_name || me.name}. <button className="btn btn-sm btn-navy" onClick={logout}>Back to admin</button></div>}
           <header className="top">
             <button className={'burger' + (!admin ? ' hide-sm' : '')} onClick={() => setOpen(true)} aria-label="Menu"><Icon name="menu" size={22} /></button>
-            {!admin && <Link href="/dashboard/" className="show-sm" style={{ flexShrink: 0 }}><img src="/logo-icon.png" alt="" width={32} height={32} style={{ display: 'block' }} /></Link>}
+            {!admin && <Link href="/dashboard/" className="show-sm" style={{ flexShrink: 0 }}><img src="/logo-full.png" alt="Vishwaship.com" className="m-logo" /></Link>}
             <form className="search" onSubmit={search}><Icon name="search" size={15} style={{ color: '#9aa0ad' }} /><input placeholder="Search AWB / order ID / phone / customer…" value={q} onChange={(e) => setQ(e.target.value)} /></form>
             {!admin && (
-              <Link href="/wallet/" className="walletbtn"><Icon name="wallet" size={14} style={{ color: 'var(--orange)' }} />{inr(me.wallet_balance)} <span className="r lbl2">+ Recharge</span></Link>
+              <Link href="/wallet/" className="walletbtn hide-sm"><Icon name="wallet" size={14} style={{ color: 'var(--orange)' }} />{inr(me.wallet_balance)} <span className="r lbl2">+ Recharge</span></Link>
             )}
             {!admin ? (
-              <Link href="/book/" className="btn btn-orange bookbtn" style={{ padding: '8px 14px' }}><Icon name="plus" size={15} /><span>Book Shipment</span></Link>
+              <Link href="/book/" className="btn btn-orange bookbtn hide-sm" style={{ padding: '8px 14px' }}><Icon name="plus" size={15} /><span>Book Shipment</span></Link>
             ) : (
-              <Link href="/admin/customers/" className="btn btn-orange bookbtn" style={{ padding: '8px 14px' }} title="Login as a customer to book on their behalf"><Icon name="plus" size={15} /><span>Book Shipment</span></Link>
+              <Link href="/admin/customers/" className="btn btn-orange bookbtn hide-sm" style={{ padding: '8px 14px' }} title="Login as a customer to book on their behalf"><Icon name="plus" size={15} /><span>Book Shipment</span></Link>
             )}
             <div className="grow" />
             {!admin && (

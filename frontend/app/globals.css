@@ -652,3 +652,5 @@ html.dark .shell .chip { filter: brightness(.9) saturate(1.2); }
 .t-orange .e { color: var(--orange); } .t-rose .e { color: #e0445a; } .t-plum .e { color: #8a4fd0; }
 html.dark .shell .mh-tile .e { background: var(--gray-soft); }
 html.dark .shell .mh-ic { background: var(--gray-soft); }
+.m-logo { display: block; height: 34px; width: auto; max-width: 190px; object-fit: contain; }
+html.dark .shell .m-logo { background: #fff; border-radius: 8px; padding: 3px 6px; }
