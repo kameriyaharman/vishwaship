@@ -94,7 +94,7 @@ function shipmozo_ensure_warehouse(array $p, bool $force = false): ?string {
         update('pickup_addresses', ['sm_warehouse_id' => (string) $id, 'sm_error' => null], 'id=?', [$p['id']]);
         return (string) $id;
     }
-    update('pickup_addresses', ['sm_error' => mb_substr($r['error'] ?: 'Shipmozo did not return a warehouse ID', 0, 250)], 'id=?', [$p['id']]);
+    update('pickup_addresses', ['sm_error' => mb_substr($r['error'] ?: 'Courier partner did not return a warehouse ID', 0, 250)], 'id=?', [$p['id']]);
     return null;
 }
 
@@ -114,13 +114,13 @@ function shipmozo_create(array $s, string $courierId): array {
         'warehouse_id' => $wh, 'gst_ewaybill_number' => (string) ($s['ewaybill_no'] ?? ''), 'gstin_number' => '',
     ], 'Push order', 'Order #' . $s['order_no']);
     $dup = !$push['ok'] && preg_match('/already|exist|duplicate/i', (string) $push['error']);
-    if (!$push['ok'] && !$dup) return ['ok' => false, 'error' => 'Shipmozo push-order failed: ' . ($push['error'] ?: 'check keys / warehouse ID')];
+    if (!$push['ok'] && !$dup) return ['ok' => false, 'error' => 'Courier booking failed: ' . ($push['error'] ?: 'check keys / warehouse ID')];
     $d = sm_data($push['json']);
     $oid = (string) (is_array($d) ? sm_pick($d, ['order_id', 'refrence_id', 'reference_id', 'id'], $s['order_no']) : $s['order_no']);
     $as = shipmozo_http('POST', 'assign-courier', ['order_id' => $oid, 'courier_id' => $courierId], 'Assign courier', "#$oid → $courierId");
     $ad = sm_data($as['json']);
     $awb = is_array($ad) ? sm_pick($ad, ['awb_number', 'awb', 'waybill']) : null;
-    if (!$as['ok'] && !preg_match('/already|assigned/i', (string) $as['error'])) return ['ok' => false, 'order_id' => $oid, 'error' => 'Shipmozo assign-courier failed: ' . ($as['error'] ?: 'no AWB returned')];
+    if (!$as['ok'] && !preg_match('/already|assigned/i', (string) $as['error'])) return ['ok' => false, 'order_id' => $oid, 'error' => 'Courier assignment failed: ' . ($as['error'] ?: 'no AWB returned')];
     if (setting('shipmozo_schedule_pickup', 'auto') !== 'never') {
         $sp = shipmozo_http('POST', 'schedule-pickup', ['order_id' => $oid], 'Schedule pickup', "#$oid");
         $sd = sm_data($sp['json']);
@@ -131,7 +131,7 @@ function shipmozo_create(array $s, string $courierId): array {
         $j = json_encode($od['json'] ?? []);
         if (preg_match('/"awb_number"\s*:\s*"?([A-Za-z0-9]+)/', $j, $m)) $awb = $m[1];
     }
-    if (!$awb) return ['ok' => false, 'order_id' => $oid, 'error' => 'Shipmozo assigned the courier but has not returned an AWB yet — please try again in a minute.'];
+    if (!$awb) return ['ok' => false, 'order_id' => $oid, 'error' => 'The courier was assigned it has not returned an AWB yet — please try again in a minute.'];
     return ['ok' => true, 'awb' => (string) $awb, 'order_id' => $oid];
 }
 
@@ -148,7 +148,7 @@ function shipmozo_label(string $awb): array {
         if ($b !== false && str_starts_with($b, '%PDF')) return ['pdf' => $b];
         if ($b !== false && preg_match('/^\x89PNG|^\xFF\xD8/', $b)) return ['img' => $b];
     }
-    return ['error' => 'Shipmozo returned the label in an unexpected format (see API logs)'];
+    return ['error' => 'Courier partner returned the label in an unexpected format (see API logs)'];
 }
 
 function shipmozo_track(string $awb): ?array {

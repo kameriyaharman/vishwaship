@@ -157,10 +157,10 @@ route('POST', '/me/pickups/(\d+)/shipmozo', function ($id) {
     $u = require_customer();
     $p = one("SELECT * FROM pickup_addresses WHERE id=? AND user_id=?", [$id, $u['id']]);
     if (!$p) fail('Not found', 404);
-    if (!shipmozo_on()) fail('Shipmozo is not enabled yet');
+    if (!shipmozo_on()) fail('Courier partner is not enabled yet');
     $wid = shipmozo_ensure_warehouse($p, true);
     $p = one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
-    if (!$wid) fail('Shipmozo: ' . ($p['sm_error'] ?: 'could not register this address'));
+    if (!$wid) fail('Courier warehouse: ' . ($p['sm_error'] ?: 'could not register this address'));
     return $p;
 });
 route('POST', '/me/pickups/(\d+)/b2b', function ($id) {
@@ -182,8 +182,10 @@ route('POST', '/me/quote', function () {
     $pay = in_array(in('payment', 'prepaid'), ['cod', 'topay'], true) ? in('payment') : 'prepaid';
     $kind = in('kind', 'b2c') === 'b2b' ? 'b2b' : 'b2c';
     if ($pay === 'topay' && $kind !== 'b2b') fail('To Pay (FOD) is available for B2B shipments');
-    return quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), $pay, (float) in('cod_amount', 0), $u, (float) in('invoice_value', 0), max(1, (int) in('boxes', 1)), $kind, (array) in('box_list', []));
+    return hide_provider(quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), $pay, (float) in('cod_amount', 0), $u, (float) in('invoice_value', 0), max(1, (int) in('boxes', 1)), $kind, (array) in('box_list', [])));
 });
+/** customers never see which aggregator a rate comes from */
+function hide_provider($q) { if (is_array($q) && isset($q['options'])) foreach ($q['options'] as &$o) unset($o['via']); return $q; }
 
 function book_shipment(array $u, array $in, bool $draft = false): array {
     $g = fn($k, $d = null) => $in[$k] ?? $d;
@@ -273,7 +275,7 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
 route('GET', '/me/shipments/(\d+)/courier-label', function ($id) {
     $u = require_customer();
     $s = my_shipment((int) $id, $u);
-    if ($s['provider'] !== 'shipmozo') fail('Courier label is available for Shipmozo shipments');
+    if ($s['provider'] !== 'shipmozo') fail('Courier label is available for partner-courier shipments');
     $r = shipmozo_label((string) $s['awb']);
     if (isset($r['url'])) return ['url' => $r['url']];
     if (isset($r['pdf']) || isset($r['img'])) return ['data' => (isset($r['pdf']) ? 'data:application/pdf;base64,' : 'data:image/png;base64,') . base64_encode($r['pdf'] ?? $r['img'])];
@@ -322,7 +324,7 @@ route('POST', '/me/shipments/(\d+)/cancel', function ($id) {
     $u = require_customer();
     $s = my_shipment((int)$id, $u);
     if ($s['status'] !== 'pickup_pending') fail('Only shipments not yet picked up can be cancelled');
-    if (($s['provider'] ?? 'delhivery') === 'shipmozo') { if (!shipmozo_cancel($s)) fail('Shipmozo could not cancel this shipment. Please contact support.'); }
+    if (($s['provider'] ?? 'delhivery') === 'shipmozo') { if (!shipmozo_cancel($s)) fail('The courier partner could not cancel this shipment. Please contact support.'); }
     elseif ($s['provider'] === 'dlvb2b') { if (!b2b_cancel($s)) fail('Delhivery B2B could not cancel this LR. Please contact support.'); }
     elseif ($s['provider'] === 'manual') { /* carrier added in admin — admin informs the courier */ }
     else delhivery_cancel((string)$s['awb']);
