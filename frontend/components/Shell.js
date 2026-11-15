@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Icon from './Icon';
 import { Logo, Spinner, Toaster } from './ui';
 import { api, getToken, setToken, setUser, inr, initials } from '@/lib/api';
+import { applyTheme, getTheme } from '@/lib/theme';
 
 const Ctx = createContext(null);
 export const useShell = () => useContext(Ctx);
@@ -54,6 +55,7 @@ export default function Shell({ admin = false, children }) {
   }, [admin, refresh, router]);
 
   useEffect(() => { setOpen(false); setShowNotes(false); setShowMenu(false); }, [path]);
+  useEffect(() => { applyTheme(admin ? 'light' : getTheme()); return () => document.documentElement.classList.remove('dark'); }, [admin]);
 
   if (!me || (admin && me.role === 'customer') || (!admin && me.role !== 'customer')) return <div style={{ paddingTop: 120 }}><Spinner /></div>;
 

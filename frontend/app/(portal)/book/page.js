@@ -36,6 +36,27 @@ export default function Book() {
   const [slot, setSlot] = useState('');
   const [f, setF] = useState(EMPTY);
   const [boxes, setBoxes] = useState([{ ...NEWBOX }]);
+  const [items, setItems] = useState([{ name: '', qty: '1', price: '' }]);
+  const [pkgs, setPkgs] = useState(() => { try { return JSON.parse(localStorage.getItem('vs_pkgs') || '[]'); } catch { return []; } });
+  const lastPhone = useRef('');
+  const syncItems = (list) => {
+    setItems(list);
+    const named = list.filter((x) => x.name.trim());
+    const total = list.reduce((a, x) => a + (+x.qty || 0) * (+x.price || 0), 0);
+    setF((x) => ({ ...x, product: named.map((x) => x.name.trim() + (+x.qty > 1 ? ' ×' + x.qty : '')).join(', ') || x.product, invoice_value: total > 0 ? String(Math.round(total * 100) / 100) : x.invoice_value }));
+  };
+  const savePkg = () => {
+    const b = boxList[0]; if (!b) return toast('Enter L × B × H first', true);
+    const name = prompt('Name this package (e.g. Small box)', `${b.l}×${b.b}×${b.h} cm`); if (!name) return;
+    const list = [{ name, l: b.l, b: b.b, h: b.h, w: f.weight }, ...pkgs.filter((p) => p.name !== name)].slice(0, 12);
+    setPkgs(list); try { localStorage.setItem('vs_pkgs', JSON.stringify(list)); } catch {} toast('Package saved for future use');
+  };
+  const usePkg = (name) => { const p = pkgs.find((x) => x.name === name); if (!p) return; setBoxes([{ l: String(p.l), b: String(p.b), h: String(p.h), n: '1' }]); if (+p.w) setF((x) => ({ ...x, weight: String(p.w) })); };
+  const phoneLookup = async (v) => {
+    const ph = v.replace(/\D/g, '').slice(-10);
+    if (ph.length !== 10 || ph === lastPhone.current || f.to_name) return; lastPhone.current = ph;
+    try { const r = await api('/me/shipments?q=' + ph + '&limit=1'); const o = (r.items || [])[0]; if (o && o.to_phone?.includes(ph)) { setF((x) => ({ ...x, to_name: x.to_name || o.to_name, to_pincode: x.to_pincode || o.to_pincode || '', to_city: x.to_city || o.to_city || '', to_state: x.to_state || o.to_state || '', to_address: x.to_address || o.to_address || '' })); toast('Buyer details filled from a previous order'); } } catch {}
+  };
   const setBox = (i, k, v) => setBoxes((bs) => bs.map((b, j) => (j === i ? { ...b, [k]: v.replace(/[^0-9.]/g, '') } : b)));
   const boxList = boxes.filter((b) => +b.l && +b.b && +b.h).map((b) => ({ l: +b.l, b: +b.b, h: +b.h, n: Math.max(1, Math.round(+b.n || 1)) }));
   const boxCount = boxList.reduce((a, b) => a + b.n, 0) || 1;
@@ -158,7 +179,7 @@ export default function Book() {
               <div className="card-h"><h3><Icon name="map" style={{ color: 'var(--orange)' }} />Delivery address</h3></div>
               <div className="grid2">
                 <div className="field"><label>Receiver name</label><input className="input" value={f.to_name} onChange={set('to_name')} /></div>
-                <div className="field"><label>Mobile</label><input className="input" inputMode="tel" value={f.to_phone} onChange={set('to_phone')} /></div>
+                <div className="field"><label>Mobile <span className="muted">(previous buyers auto-fill)</span></label><input className="input" inputMode="tel" value={f.to_phone} onChange={(e) => { set('to_phone')(e); phoneLookup(e.target.value); }} /></div>
                 <div className="field"><label>Pincode</label><input className="input hl" inputMode="numeric" maxLength={6} value={f.to_pincode} onChange={(e) => { setF({ ...f, to_pincode: e.target.value.replace(/\D/g, ''), to_city: '', to_state: '' }); }} /></div>
                 <div className="field"><label>City / State</label><div className="row" style={{ gap: 6 }}><input className="input" placeholder="City" value={f.to_city} onChange={set('to_city')} /><input className="input" placeholder="State" value={f.to_state} onChange={set('to_state')} /></div></div>
               </div>
@@ -191,7 +212,19 @@ export default function Book() {
                     ))}
                   </div>
                 </div>
-                <div className="field"><label>Product / contents</label><input className="input" value={f.product} onChange={set('product')} placeholder="Cotton kurta ×2" /></div>
+                <div className="field" style={{ gridColumn: '1 / -1' }}><label>Products</label>
+                  {items.map((it, i) => (
+                    <div key={i} className="prod-row">
+                      <input className="input" placeholder={'Product ' + (i + 1) + ' name'} value={it.name} onChange={(e) => syncItems(items.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                      <div className="qty"><button type="button" onClick={() => syncItems(items.map((x, j) => (j === i ? { ...x, qty: String(Math.max(1, (+x.qty || 1) - 1)) } : x)))}>−</button><span>{it.qty}</span><button type="button" onClick={() => syncItems(items.map((x, j) => (j === i ? { ...x, qty: String((+x.qty || 0) + 1) } : x)))}>+</button></div>
+                      <input className="input" inputMode="decimal" placeholder="Unit price ₹" value={it.price} onChange={(e) => syncItems(items.map((x, j) => (j === i ? { ...x, price: e.target.value.replace(/[^0-9.]/g, '') } : x)))} />
+                      {items.length > 1 && <button type="button" className="link-red small" onClick={() => syncItems(items.filter((_, j) => j !== i))}>Remove</button>}
+                    </div>
+                  ))}
+                  <div className="row between mt8"><button type="button" className="btn btn-outline btn-sm" onClick={() => setItems([...items, { name: '', qty: '1', price: '' }])}><Icon name="plus" size={14} /> Add product</button>
+                    {items.some((x) => +x.price) && <span className="small">Grand total: <b>{inr(items.reduce((a, x) => a + (+x.qty || 0) * (+x.price || 0), 0), 2)}</b></span>}</div>
+                  <input className="input mt8" value={f.product} onChange={set('product')} placeholder="Contents (auto from products) e.g. Cotton kurta ×2" />
+                </div>
                 <div className="field"><label>Invoice value (₹)</label><input className="input" type="number" min="0" value={f.invoice_value} onChange={(e) => setF({ ...f, invoice_value: e.target.value.replace(/^-/, '') })} /></div>
                 <div className="field"><label>Product HSN code</label><input className="input" inputMode="numeric" maxLength={8} value={f.hsn} onChange={(e) => setF({ ...f, hsn: e.target.value.replace(/\D/g, '') })} placeholder="e.g. 6204" /></div>
                 <div className="field"><label>Order reference ID <span className="muted">(optional)</span></label><input className="input" value={f.order_ref} onChange={set('order_ref')} placeholder="Your store order no." /></div>
@@ -223,6 +256,10 @@ export default function Book() {
                     </div>
                   </div>
                 ))}
+                <div className="row wrap mb8" style={{ gap: 8 }}>
+                  {pkgs.length > 0 && <select className="select" style={{ maxWidth: 230 }} value="" onChange={(e) => usePkg(e.target.value)}><option value="">Select package to autofill…</option>{pkgs.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}</select>}
+                  <button type="button" className="link-navy small" onClick={savePkg}>Save package dimensions for future use</button>
+                </div>
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => setBoxes((bs) => [...bs, { ...NEWBOX }])}><Icon name="plus" size={14} /> Add box</button>
                 <span className="tiny muted" style={{ marginLeft: 10 }}>{boxCount} box{boxCount > 1 ? 'es' : ''} · use Qty for identical cartons</span>
               </div>

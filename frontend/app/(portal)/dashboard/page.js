@@ -5,6 +5,7 @@ import Icon from '@/components/Icon';
 import { useShell } from '@/components/Shell';
 import { Stat, Chip, Spinner, ErrorBox, useLoad } from '@/components/ui';
 import { api, inr, kg, dLong, dShort, qp, lakh } from '@/lib/api';
+import MobileHome from '@/components/MobileHome';
 
 const RANGES = { today: 'Today', week: 'Last 7 days', month: 'This month', last_month: 'Last month', all: 'All time' };
 
@@ -20,6 +21,8 @@ export default function Dashboard() {
 
   return (
     <>
+      {d && <div className="show-sm"><MobileHome d={d} me={me} /></div>}
+      <div className={d ? 'hide-sm' : ''}>
       <div className="ph">
         <div><h1>Dashboard</h1><p>Hi {me.name.split(' ')[0]} 👋 — your shipments at a glance · {dLong(new Date().toISOString())}</p></div>
         <select className="select btn-outline" style={{ width: 'auto', fontWeight: 600, border: '1.5px solid var(--navy)' }} value={range} onChange={(e) => setRange(e.target.value)}>
@@ -93,6 +96,7 @@ export default function Dashboard() {
         </>
       )}
       </>}
+      </div>
     </>
   );
 }

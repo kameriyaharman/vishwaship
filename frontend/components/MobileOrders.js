@@ -6,6 +6,7 @@ import { LABEL_FORMATS } from './LabelButton';
 import { RaiseTicket } from './Tickets';
 import { Spinner, toast } from './ui';
 import { api, inr, dTime, STATUS } from '@/lib/api';
+import QuickActions from './QuickActions';
 
 const TABS = [['all', 'All'], ['pickup_pending', 'Pickup'], ['in_transit', 'In Transit'], ['out_for_delivery', 'Out for Delivery'], ['delivered', 'Delivered'], ['ndr', 'NDR'], ['rto', 'RTO'], ['lost', 'Lost'], ['weight_discrepancy', 'Weight Issue'], ['cancelled', 'Cancelled']];
 const ST_COLOR = { pickup_pending: '#b7791f', picked_up: '#2453d6', in_transit: '#2453d6', out_for_delivery: '#6b3fd4', delivered: '#1e7b3a', ndr: '#c2560f', rto_in_transit: '#c62828', rto_delivered: '#c62828', lost: '#2b2f3a', cancelled: '#6b7183', weight_discrepancy: '#c2560f' };
@@ -90,9 +91,10 @@ export default function MobileOrders({ d, tab, setTab, f, setF, apply, page, set
                       {s.to_city} {s.to_pincode} · {inr(s.total)} incl. GST
                     </div>
                     {s.status !== 'cancelled'
-                      ? <a className="mo-label" href={`/label/?id=${s.id}`} target="_blank">Label</a>
+                      ? <a className="mo-label" href={`/label/?id=${s.id}`} target="_blank" onClick={(e) => e.stopPropagation()}>Label</a>
                       : <Link className="mo-label ghost" href={'/shipment/?id=' + s.id}>View</Link>}
                   </div>
+                  {s.payment_mode === 'cod' && s.status === 'pickup_pending' && <div className="tiny mt8">WhatsApp COD order confirmation: <Link href="/settings/?tab=cod-confirmation" className="link">Setup</Link></div>}
                 </div>
               ))}
               {!d.items.length && <div className="card center small muted" style={{ padding: 30 }}>No orders here. <Link className="link" href="/book/">Book a shipment →</Link></div>}
@@ -104,7 +106,15 @@ export default function MobileOrders({ d, tab, setTab, f, setF, apply, page, set
         </>
       )}
 
-      <Link href="/book/" className="mo-fab" aria-label="Book shipment"><Icon name="bolt" size={26} /></Link>
+      <Link href="/ndr/?tab=rto" className="mo-returns"><Icon name="undo" size={15} /> Returns</Link>
+      <QuickActions title="Actions" items={[
+        ['plus', 'Add Order', 'Create a new shipment', '/book/'],
+        ['bolt', 'Quick Add Order', 'Book with fewer fields', '/book/?quick=1'],
+        ['file', 'Export Orders', 'Download orders as Excel', null, onExport],
+        ['refresh', 'Sync Orders', 'Import new orders from your stores', null, async () => { try { const r = await api('/me/channels'); let n = 0; for (const c of r.items.filter((x) => x.type !== 'custom')) { const s = await api('/me/channels/' + c.id + '/sync', { method: 'POST' }); n += s.imported; } toast(r.items.length ? `${n} new order(s) imported to Drafts` : 'No store connected — Integrations → Order Channels'); reload(); } catch (e) { toast(e.message, true); } }],
+        ['layers', 'Bulk Upload', 'Upload orders from CSV', null, onBulk],
+        ['receipt', 'Drafts / New Orders', `${drafts.length} saved order(s)`, null, onDrafts],
+      ]} />
 
       {filters && (
         <div className="mo-sheet-bg" onClick={() => setFilters(false)}>

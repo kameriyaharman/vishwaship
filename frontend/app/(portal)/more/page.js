@@ -4,7 +4,8 @@ import Link from 'next/link';
 import Icon from '@/components/Icon';
 import { useShell } from '@/components/Shell';
 import { Modal, AsyncBtn, toast } from '@/components/ui';
-import { api, setToken, setUser, initials } from '@/lib/api';
+import { api, setToken, setUser, initials, inr } from '@/lib/api';
+import { getTheme, setTheme } from '@/lib/theme';
 
 const GROUPS = [
   ['Profile', [
@@ -35,6 +36,7 @@ export default function More() {
   const { me } = useShell();
   const [open, setOpen] = useState('');
   const [del, setDel] = useState(false);
+  const [theme, setTh] = useState(getTheme);
   const logout = () => { setToken(null); setUser(null); location.href = '/login/'; };
 
   return (
@@ -43,6 +45,10 @@ export default function More() {
         <span className="avatar" style={{ width: 48, height: 48, fontSize: 16 }}>{initials(me.name)}</span>
         <div className="grow"><b style={{ fontSize: 16 }}>{me.business_name || me.name}</b><div className="small muted">{me.name} · {me.mobile} · {me.email}</div></div>
         <Link href="/settings/?tab=profile" className="btn btn-outline btn-sm">Edit</Link>
+      </div>
+      <div className="mh-2">
+        <Link href="/wallet/" className="mh-card"><span className="mh-big">👛</span><b>{inr(me.wallet_balance, 2)}</b><span>Wallet Balance</span></Link>
+        <Link href="/settings/?tab=kyc" className="mh-card"><span className="mh-big">{me.kyc_status === 'verified' ? '✅' : '🪪'}</span><b className={me.kyc_status === 'verified' ? 'green' : ''}>{me.kyc_status === 'verified' ? 'Verified' : me.kyc_status === 'submitted' ? 'Under review' : 'Pending'}</b><span>Profile Status</span></Link>
       </div>
       {GROUPS.map(([g, rows]) => (
         <div key={g}>
@@ -59,7 +65,11 @@ export default function More() {
           </div>
         </div>
       ))}
-      <div className="more-card mt24">
+      <div className="more-card mt24" style={{ padding: 14 }}>
+        <b className="small">Switch themes</b>
+        <div className="seg mt8" style={{ display: 'flex' }}>{[['light', 'Light'], ['dark', 'Dark'], ['system', 'System']].map(([k, l]) => <button key={k} type="button" className={theme === k ? 'on' : ''} style={{ flex: 1 }} onClick={() => { setTh(k); setTheme(k); }}>{l}</button>)}</div>
+      </div>
+      <div className="more-card mt16">
         <button className="more-row" onClick={logout}><span className="ic"><Icon name="logout" size={18} /></span>Log out</button>
         <AsyncBtn className="more-row danger" confirmText="Log out from all other phones and computers? This device stays logged in." onClick={async () => { const r = await api('/auth/logout-all', { method: 'POST' }); setToken(r.token); toast('Logged out from all other devices'); }}><span className="ic"><Icon name="logout" size={18} /></span>Logout from all other active devices</AsyncBtn>
         <button className="more-row danger" onClick={() => setDel(true)}><span className="ic"><Icon name="user" size={18} /></span>{me.deletion_requested_at ? 'Account deletion requested' : 'Account Deletion Request'}</button>
