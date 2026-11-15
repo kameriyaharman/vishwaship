@@ -174,7 +174,10 @@ route('DELETE', '/me/pickups/(\d+)', function ($id) { $u = require_customer(); q
 route('POST', '/me/quote', function () {
     $u = require_customer();
     $from = (string) req('from'); $to = (string) req('to');
-    return quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u, (float) in('invoice_value', 0), max(1, (int) in('boxes', 1)));
+    $pay = in_array(in('payment', 'prepaid'), ['cod', 'topay'], true) ? in('payment') : 'prepaid';
+    $kind = in('kind', 'b2c') === 'b2b' ? 'b2b' : 'b2c';
+    if ($pay === 'topay' && $kind !== 'b2b') fail('To Pay (FOD) is available for B2B shipments');
+    return quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), $pay, (float) in('cod_amount', 0), $u, (float) in('invoice_value', 0), max(1, (int) in('boxes', 1)), $kind, (array) in('box_list', []));
 });
 
 function book_shipment(array $u, array $in, bool $draft = false): array {
@@ -185,7 +188,10 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
     foreach (['to_name' => 'Receiver name', 'to_phone' => 'Receiver mobile', 'to_pincode' => 'Delivery pincode', 'to_address' => 'Full address', 'weight' => 'Weight'] as $k => $lbl)
         if (!$draft && ($g($k) === null || $g($k) === '')) fail("$lbl is required");
     $to = preg_replace('/\D/', '', (string) $g('to_pincode', ''));
-    $payment = $g('payment_mode', 'prepaid') === 'cod' ? 'cod' : 'prepaid';
+    $payment = in_array($g('payment_mode', 'prepaid'), ['cod', 'topay'], true) ? $g('payment_mode') : 'prepaid';
+    $kind = $g('ship_type', 'b2c') === 'b2b' ? 'b2b' : 'b2c';
+    if ($payment === 'topay' && $kind !== 'b2b' && !$draft) fail('To Pay (FOD) is available for B2B shipments');
+    $bl = norm_boxes($g('length', 0), $g('breadth', 0), $g('height', 0), max(1, (int) $g('boxes', 1)), is_array($g('box_list')) ? $g('box_list') : []);
     $invoice = (float) $g('invoice_value', 0);
     $cod = $payment === 'cod' ? (float) ($g('cod_amount') ?: $invoice) : 0;
     $w = (float) $g('weight', 0.5);
@@ -196,7 +202,8 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
         'to_name' => trim((string) $g('to_name', '')), 'to_phone' => preg_replace('/\D/', '', (string) $g('to_phone', '')), 'to_address' => trim((string) $g('to_address', '')),
         'to_city' => $g('to_city'), 'to_state' => $g('to_state'), 'to_pincode' => $to,
         'product' => $g('product', ''), 'invoice_value' => $invoice, 'payment_mode' => $payment, 'cod_amount' => $cod,
-        'weight' => $w, 'boxes' => max(1, min(999, (int) $g('boxes', 1))), 'length' => (float) $g('length', 0), 'breadth' => (float) $g('breadth', 0), 'height' => (float) $g('height', 0),
+        'weight' => $w, 'boxes' => max(1, min(999, array_sum(array_column($bl, 'n')))), 'length' => $bl[0]['l'], 'breadth' => $bl[0]['b'], 'height' => $bl[0]['h'],
+        'ship_type' => $kind, 'box_list' => json_encode($bl),
         'pickup_date' => $g('pickup_date') ?: date('Y-m-d'), 'pickup_slot' => $g('pickup_slot') ?: '2 PM – 6 PM', 'service' => $service,
         'hsn' => mb_substr(trim((string) $g('hsn', '')), 0, 20) ?: null, 'order_ref' => mb_substr(trim((string) $g('order_ref', '')), 0, 60) ?: null,
         'invoice_file_id' => (int) $g('invoice_file_id', 0) ?: null, 'ewaybill_no' => mb_substr(preg_replace('/\s/', '', (string) $g('ewaybill_no', '')), 0, 30) ?: null,
@@ -212,7 +219,7 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
         return ['draft_id' => $id];
     }
     if (strlen($to) !== 6) fail('Enter valid delivery pincode');
-    $qt = quote($p['pincode'], $to, $w, $data['length'], $data['breadth'], $data['height'], $payment, $cod, $u, $invoice, $data['boxes']);
+    $qt = quote($p['pincode'], $to, $w, $data['length'], $data['breadth'], $data['height'], $payment, $cod, $u, $invoice, $data['boxes'], $kind, $bl);
     $opt = null; foreach ($qt['options'] as $o) if ($o['service'] === $service) $opt = $o;
     if (!$opt) fail('Selected service is not available');
     if ($opt['provider'] === 'delhivery') {

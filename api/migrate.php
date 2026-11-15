@@ -100,7 +100,7 @@ function migrate(): void {
 
     // v7: change requests (documents, KYC docs, COD remittance detail, ticket conversations)
     $addCols = [
-        'shipments' => ['boxes' => 'INT NOT NULL DEFAULT 1', 'hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
+        'shipments' => ['ship_type' => "VARCHAR(5) NOT NULL DEFAULT 'b2c'", 'box_list' => 'TEXT NULL', 'boxes' => 'INT NOT NULL DEFAULT 1', 'hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
         'users' => ['account_type' => "VARCHAR(20) NOT NULL DEFAULT 'individual'", 'aadhaar_doc_id' => 'INT NULL', 'pan_doc_id' => 'INT NULL', 'cheque_doc_id' => 'INT NULL', 'gst_doc_id' => 'INT NULL', 'kyc_submitted_at' => 'DATETIME NULL', 'kyc_reviewed_at' => 'DATETIME NULL'],
         'pickup_addresses' => ['sm_warehouse_id' => 'VARCHAR(40) NULL', 'sm_error' => 'VARCHAR(255) NULL', 'b2b_wh_name' => 'VARCHAR(60) NULL', 'b2b_error' => 'VARCHAR(255) NULL'],
         'cod_remittances' => ['ref_no' => 'VARCHAR(30) NULL', 'wallet_used' => 'DECIMAL(12,2) NOT NULL DEFAULT 0', 'amount_paid' => 'DECIMAL(12,2) NULL', 'paid_at' => 'DATETIME NULL'],
@@ -122,6 +122,14 @@ function migrate(): void {
     q("UPDATE cod_remittances SET amount_paid=amount, paid_at=COALESCE(paid_at, CONCAT(remit_date, ' 12:00:00')) WHERE amount_paid IS NULL AND status='paid'");
     $cc = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
     if (is_array($cc) && (($cc['hero_image'] ?? '') === '' || str_contains((string) ($cc['hero_image'] ?? ''), 'images.hostinger.com'))) { $cc['hero_image'] = '/hero.jpg'; set_setting('content', $cc); }
+    // v12: To Pay (FOD) payment mode; B2B Shipmozo package type; carriers registry
+    if (val("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND COLUMN_NAME='payment_mode'") === 'enum')
+        $pdo->exec("ALTER TABLE shipments MODIFY payment_mode VARCHAR(10) NOT NULL DEFAULT 'prepaid'");
+    foreach (['topay_fee' => '0', 'shipmozo_b2b_package_type' => 'B2B'] as $k => $v) q("INSERT IGNORE INTO settings (k,v) VALUES (?,?)", [$k, $v]);
+    $pdo->exec("CREATE TABLE IF NOT EXISTS carriers (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(80) NOT NULL, code VARCHAR(40) NULL, logo_file_id INT NULL, website VARCHAR(190) NULL,
+        api_base VARCHAR(255) NULL, auth_type VARCHAR(20) NOT NULL DEFAULT 'api_key', credentials TEXT NULL, services VARCHAR(255) NULL, modes VARCHAR(40) NULL, contact_name VARCHAR(120) NULL,
+        contact_phone VARCHAR(30) NULL, contact_email VARCHAR(120) NULL, notes TEXT NULL, status VARCHAR(20) NOT NULL DEFAULT 'pending', enabled TINYINT NOT NULL DEFAULT 0,
+        last_test VARCHAR(255) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     // v11: new support number everywhere (website content + settings)
     foreach ([['+91 92208 92667', '+91 63984 75325'], ['+91-92208-92667', '+91 63984 75325'], ['92208 92667', '63984 75325'], ['919220892667', '916398475325'], ['9220892667', '6398475325']] as [$a, $b])
         q("UPDATE settings SET v=REPLACE(v, ?, ?) WHERE v LIKE ?", [$a, $b, '%' . $a . '%']);

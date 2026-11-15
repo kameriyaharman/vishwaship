@@ -199,8 +199,25 @@ function service_meta(): array {
 }
 
 /** Full quote: returns options for surface & express with base + final */
-function quote(string $from, string $to, float $weight, $l, $b, $h, string $payment, float $codAmount, ?array $user, float $value = 0, int $boxes = 1): array {
-    $vol = vol_weight($l, $b, $h);
+/** boxes: [['l','b','h','n'], …] — falls back to one L×B×H × $boxes */
+function norm_boxes($l, $b, $h, int $boxes, array $list = []): array {
+    $out = [];
+    foreach ($list as $x) {
+        if (!is_array($x)) continue;
+        $bx = ['l' => (float) ($x['l'] ?? $x['length'] ?? 0), 'b' => (float) ($x['b'] ?? $x['breadth'] ?? 0), 'h' => (float) ($x['h'] ?? $x['height'] ?? 0), 'n' => max(1, (int) ($x['n'] ?? $x['qty'] ?? 1))];
+        if ($bx['l'] > 0 && $bx['b'] > 0 && $bx['h'] > 0) $out[] = $bx;
+    }
+    return $out ?: [['l' => (float) $l, 'b' => (float) $b, 'h' => (float) $h, 'n' => max(1, $boxes)]];
+}
+
+function quote(string $from, string $to, float $weight, $l, $b, $h, string $payment, float $codAmount, ?array $user, float $value = 0, int $boxes = 1, string $kind = 'b2c', array $boxList = []): array {
+    $kind = $kind === 'b2b' ? 'b2b' : 'b2c';
+    $topay = $payment === 'topay';
+    $bl = norm_boxes($l, $b, $h, $boxes, $boxList);
+    $boxes = array_sum(array_column($bl, 'n'));
+    $vol = 0; foreach ($bl as $x) $vol += vol_weight($x['l'], $x['b'], $x['h']) * $x['n'];
+    $vol = round($vol, 2);
+    [$l, $b, $h] = [$bl[0]['l'], $bl[0]['b'], $bl[0]['h']];
     $charge = max($weight, $vol);
     $zone = zone_for($from, $to);
     $markup = markup_for($user);
@@ -209,6 +226,7 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
     $dis = $user ? (array) (prefs($user)['disabled_services'] ?? []) : [];
     $realLive = shipmozo_on() || b2b_on();
     foreach (service_meta() as $svc => $meta) {
+        if ($kind === 'b2b' || $topay) break; // direct Delhivery = B2C parcels only
         if (setting('delhivery_enabled', '1') !== '1') break;
         if (!delhivery_live() && $realLive) break; // simulation would hand out fake AWBs next to real couriers
         if (setting("service_{$svc}_enabled", '1') !== '1') continue;
@@ -230,17 +248,19 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
             'gst' => $gst, 'total' => round($freight + $cod + $gst, 2),
         ];
     }
-    if (!in_array('shipmozo', $dis)) foreach (shipmozo_rates($from, $to, max($weight, $vol * max(1, $boxes)), $l, $b, $h, $payment, $codAmount, $value ?: $codAmount, max(1, $boxes)) as $r) {
+    $smPkg = $kind === 'b2b' ? setting('shipmozo_b2b_package_type', 'B2B') : setting('shipmozo_package_type', 'SPS');
+    $smRates = (!in_array('shipmozo', $dis) && !$topay) ? shipmozo_rates($from, $to, $charge, $l, $b, $h, $payment, $codAmount, $value ?: $codAmount, $boxes, $smPkg, $bl) : [];
+    foreach ($smRates as $r) {
+        $isB2b = (bool) preg_match('/\b(b2b|ltl|ptl|cargo)\b/i', $r['name']);
+        if ($kind === 'b2c' && $isB2b) continue;
         $freight = apply_markup($r['base'], $markup);
         $gst = round($freight * $gstPct / 100, 2);
         $out[] = ['service' => 'sm_' . $r['courier_id'], 'provider' => 'shipmozo', 'courier_id' => $r['courier_id'], 'name' => $r['name'], 'days' => $r['days'] ?: 'As per courier',
             'eta' => $r['eta'] ?: date('Y-m-d', strtotime('+4 days')), 'base' => $r['base'], 'cod_base' => 0, 'freight' => $freight, 'cod_charge' => 0, 'gst' => $gst, 'total' => round($freight + $gst, 2)];
     }
-    // Delhivery B2B (heavy cargo) — shown from the configured minimum chargeable weight
-    // weight = total of all boxes, L×B×H = one box
-    $b2bKg = max($weight, $vol * max(1, $boxes));
-    if (!in_array('dlvb2b', $dis) && b2b_on() && $b2bKg >= (float) setting('dlvb2b_min_kg', 10)) {
-        $e = b2b_estimate($from, $to, $b2bKg, $l, $b, $h, max(1, $boxes), $payment, $codAmount, $value ?: $codAmount);
+    // Delhivery Cargo (B2B / LTL) — when the customer picks B2B
+    if ($kind === 'b2b' && !in_array('dlvb2b', $dis) && b2b_on()) {
+        $e = b2b_estimate($from, $to, $charge, $l, $b, $h, $boxes, $payment, $codAmount, $value ?: $codAmount, $bl);
         if ($e) {
             $freight = apply_markup($e['base'], $markup);
             $gst = round($freight * $gstPct / 100, 2);
@@ -250,7 +270,16 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
                 'base' => $e['base'], 'cod_base' => 0, 'freight' => $freight, 'cod_charge' => 0, 'gst' => $gst, 'total' => round($freight + $gst, 2)];
         }
     }
-    return ['zone' => $zone, 'zone_label' => ZONE_LABEL[$zone], 'vol_weight' => $vol, 'actual_weight' => $weight,
+    if ($topay) {
+        $fee = (float) setting('topay_fee', '0');
+        foreach ($out as &$o) {
+            $o['to_pay'] = true;
+            $o['receiver_pays'] = round(($o['base'] ?? 0) * (1 + $gstPct / 100), 2); // courier collects its freight from the receiver
+            $o['freight'] = $fee; $o['cod_charge'] = 0; $o['gst'] = round($fee * $gstPct / 100, 2); $o['total'] = round($fee + $o['gst'], 2);
+        }
+        unset($o);
+    }
+    return ['zone' => $zone, 'zone_label' => ZONE_LABEL[$zone], 'kind' => $kind, 'boxes' => $boxes, 'vol_weight' => $vol, 'actual_weight' => $weight,
         'chargeable_weight' => slab_weight($charge), 'raw_chargeable' => $charge, 'markup' => $markup, 'gst_pct' => $gstPct, 'options' => $out];
 }
 

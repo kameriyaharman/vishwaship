@@ -73,18 +73,20 @@ function b2b_serviceable(string $pin, float $kg): ?array {
 }
 
 /** freight estimate → base cost (₹, before our GST) or null */
-function b2b_estimate(string $from, string $to, float $kg, $l, $b, $h, int $boxes, string $payment, float $cod, float $value): ?array {
+function b2b_estimate(string $from, string $to, float $kg, $l, $b, $h, int $boxes, string $payment, float $cod, float $value, array $boxList = []): ?array {
     static $c = [];
     $key = json_encode(func_get_args());
     if (array_key_exists($key, $c)) return $c[$key];
     $sf = b2b_serviceable($to, $kg);
     if (!$sf || !$sf['serviceable']) return $c[$key] = null;
     $body = [
-        'dimensions' => [['length_cm' => (float) ($l ?: 10), 'width_cm' => (float) ($b ?: 10), 'height_cm' => (float) ($h ?: 10), 'box_count' => max(1, $boxes)]],
+        'dimensions' => $boxList ? array_map(fn($x) => ['length_cm' => (float) $x['l'], 'width_cm' => (float) $x['b'], 'height_cm' => (float) $x['h'], 'box_count' => (int) $x['n']], $boxList)
+            : [['length_cm' => (float) ($l ?: 10), 'width_cm' => (float) ($b ?: 10), 'height_cm' => (float) ($h ?: 10), 'box_count' => max(1, $boxes)]],
         'weight_g' => (int) round($kg * 1000), 'source_pin' => $from, 'consignee_pin' => $to,
         'payment_mode' => $payment === 'cod' ? 'cod' : 'prepaid', 'inv_amount' => (float) ($value ?: $cod ?: 1), 'cod_amount' => $payment === 'cod' ? (float) $cod : 0,
-        'freight_mode' => setting('dlvb2b_freight_mode', 'fop'), 'rov_insurance' => setting('dlvb2b_rov', '0') === '1',
+        'freight_mode' => $payment === 'topay' ? 'fod' : setting('dlvb2b_freight_mode', 'fop'), 'rov_insurance' => setting('dlvb2b_rov', '0') === '1',
     ];
+    if ($payment === 'topay') $body['payment_mode'] = 'prepaid';
     $r = b2b_http('POST', 'freight/estimate', $body, 'Freight estimate', "$from → $to · {$kg}kg");
     if (!$r['ok']) return $c[$key] = null;
     $d = $r['json']['data'] ?? [];
@@ -127,8 +129,9 @@ function b2b_create(array $s, array $p): array {
         'rov_insurance' => setting('dlvb2b_rov', '0') === '1' ? 'true' : 'false',
         'invoices' => json_encode([['inv_num' => $s['order_ref'] ?: $s['order_no'], 'inv_amt' => (float) $s['invoice_value'], 'ewaybill' => (string) ($s['ewaybill_no'] ?? ''), 'inv_qr_code' => '']]),
         'shipment_details' => json_encode([['order_id' => $s['order_no'], 'box_count' => $boxes, 'description' => $s['product'] ?: 'Goods']]),
-        'dimensions' => json_encode([['length' => (float) ($s['length'] ?: 10), 'width' => (float) ($s['breadth'] ?: 10), 'height' => (float) ($s['height'] ?: 10), 'box_count' => $boxes]]),
-        'fm_pickup' => 'true', 'freight_mode' => setting('dlvb2b_freight_mode', 'fop'),
+        'dimensions' => json_encode(array_map(fn($x) => ['length' => (float) $x['l'], 'width' => (float) $x['b'], 'height' => (float) $x['h'], 'box_count' => (int) $x['n']],
+            norm_boxes($s['length'], $s['breadth'], $s['height'], $boxes, (array) json_decode((string) ($s['box_list'] ?? ''), true)))),
+        'fm_pickup' => 'true', 'freight_mode' => $s['payment_mode'] === 'topay' ? 'fod' : setting('dlvb2b_freight_mode', 'fop'),
         'billing_address' => json_encode(['name' => setting('company_name', 'Vishwaship'), 'company' => setting('company_name', 'Vishwaship'), 'consignor' => $s['from_contact'] ?: $s['from_name'],
             'address' => setting('company_address', ''), 'city' => setting('company_city', 'New Delhi'), 'state' => setting('company_state', 'Delhi'), 'pin' => setting('company_pincode', '110075'),
             'phone' => substr(preg_replace('/\D/', '', setting('company_phone', '') ?: (string) $s['from_phone']), -10), 'gst_number' => setting('company_gstin', '')]),
