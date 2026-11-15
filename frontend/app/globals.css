@@ -668,3 +668,11 @@ html.dark .shell [style*="background: #f"], html.dark .shell [style*="background
 html.dark .shell .prod-row .qty { background: #10151f; }
 html.dark .shell label { color: var(--muted); }
 html.dark .shell .btn-outline { border-color: #3a4560; color: var(--text); background: transparent; }
+.rp-partners { margin: -4px -4px 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line-2); }
+.rp-partners > span { display: block; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--orange); margin-bottom: 8px; }
+.rp-partners .lslide { margin: 0; }
+.rp-partners .lslide-item { width: 118px; height: 56px; margin: 0 6px; padding: 8px 12px; border-radius: 10px; }
+.rp-partners .lslide-item img { max-height: 32px; }
+.rp-hero .in > * { min-width: 0; }
+.rp-calc { min-width: 0; max-width: 100%; }
+.rp-partners { min-width: 0; max-width: 100%; overflow: hidden; }

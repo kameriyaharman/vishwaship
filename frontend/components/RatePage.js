@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Icon from './Icon';
 import RateCalc from './RateCalc';
+import LogoSlider from './LogoSlider';
 import PublicNav, { PublicFooter } from './PublicNav';
 import { useConfig } from '@/lib/config';
 import { getUser } from '@/lib/api';
@@ -34,6 +35,7 @@ export default function RatePage() {
             </div>
           </div>
           <div className="calc rp-calc">
+            <div className="rp-partners"><span>Our courier partners</span><LogoSlider logos={c.partner_logos} /></div>
             <div className="seg mb12">
               <button type="button" className={mode === 'rate' ? 'on' : ''} onClick={() => setMode('rate')}>Rate calculator</button>
               <button type="button" className={mode === 'track' ? 'on' : ''} onClick={() => setMode('track')}>Track shipment</button>
