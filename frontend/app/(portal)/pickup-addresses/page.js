@@ -13,16 +13,20 @@ export default function Pickups() {
   if (!d) return <Spinner />;
   return (
     <>
-      <PageHead title="Pickup Addresses" sub="Warehouses / pickup points — auto-registered with Delhivery as pickup locations"><button className="btn btn-orange" onClick={() => setEdit(BLANK)}>+ Add pickup address</button></PageHead>
+      <PageHead title="Pickup Addresses" sub="Warehouses / pickup points — auto-registered as pickup locations with the courier partners"><button className="btn btn-orange" onClick={() => setEdit(BLANK)}>+ Add pickup address</button></PageHead>
       <div className="grid2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
         {d.items.map((p) => (
           <div key={p.id} className="card">
             <div className="row between"><b>{p.name}</b><span className="row" style={{ gap: 6 }}>{p.is_default == 1 && <Chip s="delivered" label="Default" />}<Chip s={p.delhivery_status} label={p.delhivery_status === 'registered' ? 'Registered' : p.delhivery_status === 'failed' ? 'Failed' : 'Pending'} /></span></div>
             <div className="small mt8">{p.address}, {p.city}, {p.state} — {p.pincode}</div>
             <div className="small muted">{p.contact} · {p.phone}</div>
+            {p.sm_warehouse_id
+              ? <div className="note mt8 small">Shipmozo warehouse ID: <b className="mono">{p.sm_warehouse_id}</b></div>
+              : p.sm_error && <div className="err mt8 small">Shipmozo registration failed: {p.sm_error}</div>}
             <div className="row mt12">
               <button className="btn btn-outline btn-sm" onClick={() => setEdit({ ...p, is_default: p.is_default == 1 })}>Edit</button>
               {p.is_default != 1 && <AsyncBtn className="btn btn-outline btn-sm" onClick={async () => { await api('/me/pickups/' + p.id, { method: 'PUT', body: { is_default: true } }); reload(); }}>Make default</AsyncBtn>}
+              {!p.sm_warehouse_id && p.sm_error && <AsyncBtn className="btn btn-outline btn-sm" onClick={async () => { try { await api('/me/pickups/' + p.id + '/shipmozo', { method: 'POST' }); toast('Registered on Shipmozo'); } catch (e) { toast(e.message, true); } reload(); }}>Retry Shipmozo</AsyncBtn>}
               <AsyncBtn className="btn btn-outline btn-sm" confirmText="Delete this pickup address?" onClick={async () => { await api('/me/pickups/' + p.id, { method: 'DELETE' }); reload(); }}>Delete</AsyncBtn>
             </div>
           </div>

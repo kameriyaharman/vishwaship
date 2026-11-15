@@ -125,6 +125,7 @@ route('POST', '/me/pickups', function () {
     if (!val("SELECT id FROM pickup_addresses WHERE user_id=?", [$u['id']]) || in('is_default')) { q("UPDATE pickup_addresses SET is_default=0 WHERE user_id=?", [$u['id']]); $d['is_default'] = 1; }
     $id = insert('pickup_addresses', $d);
     delhivery_register_pickup(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
+    shipmozo_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
     activity((int)$u['id'], 'Added warehouse', $d['name'] . ' · ' . $d['pincode']);
     return one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
 });
@@ -132,8 +133,25 @@ route('PUT', '/me/pickups/(\d+)', function ($id) {
     $u = require_customer();
     if (!val("SELECT id FROM pickup_addresses WHERE id=? AND user_id=?", [$id, $u['id']])) fail('Not found', 404);
     if (in('is_default')) { q("UPDATE pickup_addresses SET is_default=0 WHERE user_id=?", [$u['id']]); update('pickup_addresses', ['is_default' => 1], 'id=?', [$id]); }
-    if (in('name')) update('pickup_addresses', pickup_payload(), 'id=?', [$id]);
+    if (in('name')) {
+        $old = one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
+        $new = pickup_payload();
+        update('pickup_addresses', $new, 'id=?', [$id]);
+        // address changed → register a fresh warehouse on Shipmozo for future bookings
+        $changed = false; foreach (['contact', 'phone', 'address', 'pincode', 'city', 'state'] as $k) if ((string) $old[$k] !== (string) $new[$k]) $changed = true;
+        if ($changed) { update('pickup_addresses', ['sm_warehouse_id' => null, 'sm_error' => null], 'id=?', [$id]); shipmozo_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$id])); }
+    }
     return one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
+});
+route('POST', '/me/pickups/(\d+)/shipmozo', function ($id) {
+    $u = require_customer();
+    $p = one("SELECT * FROM pickup_addresses WHERE id=? AND user_id=?", [$id, $u['id']]);
+    if (!$p) fail('Not found', 404);
+    if (!shipmozo_on()) fail('Shipmozo is not enabled yet');
+    $wid = shipmozo_ensure_warehouse($p, true);
+    $p = one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
+    if (!$wid) fail('Shipmozo: ' . ($p['sm_error'] ?: 'could not register this address'));
+    return $p;
 });
 route('DELETE', '/me/pickups/(\d+)', function ($id) { $u = require_customer(); q("DELETE FROM pickup_addresses WHERE id=? AND user_id=?", [$id, $u['id']]); return ['ok' => true]; });
 

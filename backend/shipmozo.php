@@ -63,9 +63,36 @@ function shipmozo_rates(string $from, string $to, float $kg, $l, $b, $h, string 
     return $cache[$key] = array_slice($out, 0, max(1, $max));
 }
 
+/**
+ * Each customer pickup address becomes its own warehouse on the Shipmozo panel (POST create-warehouse).
+ * The id is saved on the pickup address; on failure the error is saved so the customer can retry.
+ */
+function shipmozo_ensure_warehouse(array $p, bool $force = false): ?string {
+    if (!$force && !empty($p['sm_warehouse_id'])) return (string) $p['sm_warehouse_id'];
+    if (!shipmozo_on()) return null;
+    $phone = substr(preg_replace('/\D/', '', (string) $p['phone']), -10);
+    $body = [
+        'address_title' => mb_substr('VS' . $p['user_id'] . '-' . $p['id'] . ' ' . $p['name'], 0, 60),
+        'name' => $p['contact'] ?: $p['name'], 'phone' => (int) $phone, 'email' => (string) (val("SELECT email FROM users WHERE id=?", [$p['user_id']]) ?: ''),
+        'address_line_one' => mb_substr((string) $p['address'], 0, 190), 'address_line_two' => trim(($p['city'] ?? '') . ', ' . ($p['state'] ?? ''), ', '),
+        'pin_code' => (int) $p['pincode'],
+    ];
+    $r = shipmozo_http('POST', 'create-warehouse', $body, 'Create warehouse', $p['name'] . ' · ' . $p['pincode']);
+    $d = sm_data($r['json']);
+    $id = is_array($d) ? sm_pick($d, ['warehouse_id', 'id']) : null;
+    if ($r['ok'] && $id) {
+        update('pickup_addresses', ['sm_warehouse_id' => (string) $id, 'sm_error' => null], 'id=?', [$p['id']]);
+        return (string) $id;
+    }
+    update('pickup_addresses', ['sm_error' => mb_substr($r['error'] ?: 'Shipmozo did not return a warehouse ID', 0, 250)], 'id=?', [$p['id']]);
+    return null;
+}
+
 /** Push order + assign courier (+ schedule pickup when needed). Returns ['ok','awb','order_id','error'] */
 function shipmozo_create(array $s, string $courierId): array {
-    $wh = setting('shipmozo_warehouse_id');
+    $p = !empty($s['pickup_id']) ? one("SELECT * FROM pickup_addresses WHERE id=?", [$s['pickup_id']]) : null;
+    $wh = ($p ? shipmozo_ensure_warehouse($p) : null) ?: setting('shipmozo_warehouse_id');
+    if (!$wh) return ['ok' => false, 'error' => 'Pickup address is not registered on Shipmozo yet' . ($p && $p['sm_error'] ? ' (' . $p['sm_error'] . ')' : '') . ' — open Pickup addresses and retry.'];
     $push = shipmozo_http('POST', 'push-order', [
         'order_id' => $s['order_no'], 'order_date' => date('Y-m-d'), 'order_type' => 'ESSENTIALS',
         'consignee_name' => $s['to_name'], 'consignee_phone' => $s['to_phone'], 'consignee_email' => '', 'consignee_address_line_one' => $s['to_address'],

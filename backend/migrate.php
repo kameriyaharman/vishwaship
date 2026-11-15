@@ -102,6 +102,7 @@ function migrate(): void {
     $addCols = [
         'shipments' => ['hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
         'users' => ['account_type' => "VARCHAR(20) NOT NULL DEFAULT 'individual'", 'aadhaar_doc_id' => 'INT NULL', 'pan_doc_id' => 'INT NULL', 'cheque_doc_id' => 'INT NULL', 'gst_doc_id' => 'INT NULL', 'kyc_submitted_at' => 'DATETIME NULL', 'kyc_reviewed_at' => 'DATETIME NULL'],
+        'pickup_addresses' => ['sm_warehouse_id' => 'VARCHAR(40) NULL', 'sm_error' => 'VARCHAR(255) NULL'],
         'cod_remittances' => ['ref_no' => 'VARCHAR(30) NULL', 'wallet_used' => 'DECIMAL(12,2) NOT NULL DEFAULT 0', 'amount_paid' => 'DECIMAL(12,2) NULL', 'paid_at' => 'DATETIME NULL'],
         'tickets' => ['ticket_no' => 'VARCHAR(20) NULL', 'category' => 'VARCHAR(60) NULL', 'awb' => 'VARCHAR(40) NULL', 'priority' => "VARCHAR(10) NOT NULL DEFAULT 'normal'", 'assignee_id' => 'INT NULL',
             'resolution' => 'TEXT NULL', 'updated_at' => 'DATETIME NULL', 'customer_seen_at' => 'DATETIME NULL', 'last_reply_by' => 'VARCHAR(10) NULL'],
