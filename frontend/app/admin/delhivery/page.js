@@ -75,7 +75,7 @@ function Shipmozo() {
   const [f, setF] = useState(null);
   const [wh, setWh] = useState([]);
   const [prev, setPrev] = useState(null);
-  useEffect(() => { if (d) setF({ enabled: d.enabled, public_key: d.public_key, private_key: '', base: d.base, warehouse_id: d.warehouse_id, package_type: d.package_type, rov_type: d.rov_type, max_options: d.max_options, schedule_pickup: d.schedule_pickup, delhivery_enabled: d.delhivery_enabled }); }, [d]);
+  useEffect(() => { if (d) setF({ enabled: d.enabled, public_key: d.public_key, private_key: '', base: d.base, warehouse_id: d.warehouse_id, package_type: d.package_type, b2b_package_type: d.b2b_package_type, rov_type: d.rov_type, max_options: d.max_options, schedule_pickup: d.schedule_pickup, delhivery_enabled: d.delhivery_enabled }); }, [d]);
   if (err) return <ErrorBox err={err} onRetry={reload} />;
   if (!f) return <Spinner />;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
@@ -98,7 +98,8 @@ function Shipmozo() {
         <div className="col">
           <div className="field"><label>API base URL</label><input className="input" value={f.base} onChange={set('base')} /></div>
           <div className="grid2">
-            <div className="field"><label>Package type</label><input className="input" value={f.package_type} onChange={set('package_type')} /></div>
+            <div className="field"><label>Package type (B2C)</label><input className="input" value={f.package_type} onChange={set('package_type')} /></div>
+            <div className="field"><label>Package type (B2B)</label><input className="input" value={f.b2b_package_type || ''} onChange={set('b2b_package_type')} placeholder="B2B" /></div>
             <div className="field"><label>ROV type</label><input className="input" value={f.rov_type} onChange={set('rov_type')} /></div>
           </div>
           <div className="field"><label>Schedule pickup after booking</label><select className="select" value={f.schedule_pickup} onChange={set('schedule_pickup')}><option value="auto">Yes (call schedule-pickup)</option><option value="never">No (courier auto-schedules)</option></select></div>
