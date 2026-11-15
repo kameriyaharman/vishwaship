@@ -128,7 +128,7 @@ export default function Content() {
       {tab === 'gen' && (
         <div className="split">
           <div className="card col"><h3 style={{ fontSize: 15 }}>Company (for invoices)</h3>
-            {G('company_name', 'Company name')}{G('company_gstin', 'GSTIN')}{G('company_address', 'Address')}<div className="grid2">{G('invoice_prefix', 'Invoice prefix')}{G('gst_pct', 'GST %', 'number')}</div>
+            {G('company_name', 'Company name')}{G('company_gstin', 'GSTIN')}{G('company_address', 'Address')}<div className="grid2">{G('company_city', 'City')}{G('company_state', 'State')}</div><div className="grid2">{G('company_pincode', 'Pincode')}{G('company_phone', 'Company phone (10 digits)')}</div><div className="grid2">{G('invoice_prefix', 'Invoice prefix')}{G('gst_pct', 'GST %', 'number')}</div>
             <h3 style={{ fontSize: 15 }} className="mt12">Customer rules</h3>
             <label className="check"><input type="checkbox" checked={g.require_kyc === '1'} onChange={(e) => setG({ ...g, require_kyc: e.target.checked ? '1' : '0' })} /> Require verified KYC before booking</label>
             <div className="grid2">{G('min_recharge', 'Minimum recharge (₹)', 'number')}{G('low_wallet_threshold', 'Low wallet alert below (₹)', 'number')}</div>

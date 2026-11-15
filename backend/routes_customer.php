@@ -126,6 +126,7 @@ route('POST', '/me/pickups', function () {
     $id = insert('pickup_addresses', $d);
     delhivery_register_pickup(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
     shipmozo_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
+    b2b_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
     activity((int)$u['id'], 'Added warehouse', $d['name'] . ' · ' . $d['pincode']);
     return one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
 });
@@ -139,7 +140,11 @@ route('PUT', '/me/pickups/(\d+)', function ($id) {
         update('pickup_addresses', $new, 'id=?', [$id]);
         // address changed → register a fresh warehouse on Shipmozo for future bookings
         $changed = false; foreach (['contact', 'phone', 'address', 'pincode', 'city', 'state'] as $k) if ((string) $old[$k] !== (string) $new[$k]) $changed = true;
-        if ($changed) { update('pickup_addresses', ['sm_warehouse_id' => null, 'sm_error' => null], 'id=?', [$id]); shipmozo_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$id])); }
+        if ($changed) {
+            update('pickup_addresses', ['sm_warehouse_id' => null, 'sm_error' => null, 'b2b_wh_name' => null, 'b2b_error' => null], 'id=?', [$id]);
+            shipmozo_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
+            b2b_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$id]));
+        }
     }
     return one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
 });
@@ -153,13 +158,23 @@ route('POST', '/me/pickups/(\d+)/shipmozo', function ($id) {
     if (!$wid) fail('Shipmozo: ' . ($p['sm_error'] ?: 'could not register this address'));
     return $p;
 });
+route('POST', '/me/pickups/(\d+)/b2b', function ($id) {
+    $u = require_customer();
+    $p = one("SELECT * FROM pickup_addresses WHERE id=? AND user_id=?", [$id, $u['id']]);
+    if (!$p) fail('Not found', 404);
+    if (!b2b_on()) fail('Delhivery Cargo (B2B) is not enabled yet');
+    $n = b2b_ensure_warehouse($p, true);
+    $p = one("SELECT * FROM pickup_addresses WHERE id=?", [$id]);
+    if (!$n) fail('Delhivery B2B: ' . ($p['b2b_error'] ?: 'could not register this address'));
+    return $p;
+});
 route('DELETE', '/me/pickups/(\d+)', function ($id) { $u = require_customer(); q("DELETE FROM pickup_addresses WHERE id=? AND user_id=?", [$id, $u['id']]); return ['ok' => true]; });
 
 // ---------- booking ----------
 route('POST', '/me/quote', function () {
     $u = require_customer();
     $from = (string) req('from'); $to = (string) req('to');
-    return quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u, (float) in('invoice_value', 0));
+    return quote($from, $to, (float) req('weight'), in('l', 0), in('b', 0), in('h', 0), in('payment', 'prepaid') === 'cod' ? 'cod' : 'prepaid', (float) in('cod_amount', 0), $u, (float) in('invoice_value', 0), max(1, (int) in('boxes', 1)));
 });
 
 function book_shipment(array $u, array $in, bool $draft = false): array {
@@ -181,7 +196,7 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
         'to_name' => trim((string) $g('to_name', '')), 'to_phone' => preg_replace('/\D/', '', (string) $g('to_phone', '')), 'to_address' => trim((string) $g('to_address', '')),
         'to_city' => $g('to_city'), 'to_state' => $g('to_state'), 'to_pincode' => $to,
         'product' => $g('product', ''), 'invoice_value' => $invoice, 'payment_mode' => $payment, 'cod_amount' => $cod,
-        'weight' => $w, 'length' => (float) $g('length', 0), 'breadth' => (float) $g('breadth', 0), 'height' => (float) $g('height', 0),
+        'weight' => $w, 'boxes' => max(1, min(999, (int) $g('boxes', 1))), 'length' => (float) $g('length', 0), 'breadth' => (float) $g('breadth', 0), 'height' => (float) $g('height', 0),
         'pickup_date' => $g('pickup_date') ?: date('Y-m-d'), 'pickup_slot' => $g('pickup_slot') ?: '2 PM – 6 PM', 'service' => $service,
         'hsn' => mb_substr(trim((string) $g('hsn', '')), 0, 20) ?: null, 'order_ref' => mb_substr(trim((string) $g('order_ref', '')), 0, 60) ?: null,
         'invoice_file_id' => (int) $g('invoice_file_id', 0) ?: null, 'ewaybill_no' => mb_substr(preg_replace('/\s/', '', (string) $g('ewaybill_no', '')), 0, 30) ?: null,
@@ -197,12 +212,14 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
         return ['draft_id' => $id];
     }
     if (strlen($to) !== 6) fail('Enter valid delivery pincode');
-    $sv = delhivery_serviceability($to);
-    if (!$sv['serviceable']) fail('Delivery pincode is not serviceable');
-    if ($payment === 'cod' && !$sv['cod']) fail('COD is not available for this pincode');
-    $qt = quote($p['pincode'], $to, $w, $data['length'], $data['breadth'], $data['height'], $payment, $cod, $u, $invoice);
+    $qt = quote($p['pincode'], $to, $w, $data['length'], $data['breadth'], $data['height'], $payment, $cod, $u, $invoice, $data['boxes']);
     $opt = null; foreach ($qt['options'] as $o) if ($o['service'] === $service) $opt = $o;
     if (!$opt) fail('Selected service is not available');
+    if ($opt['provider'] === 'delhivery') {
+        $sv = delhivery_serviceability($to);
+        if (!$sv['serviceable']) fail('Delivery pincode is not serviceable');
+        if ($payment === 'cod' && !$sv['cod']) fail('COD is not available for this pincode');
+    }
     $available = (float) $u['wallet_balance'] + (float) $u['credit_limit'];
     if ($available < $opt['total']) fail('Insufficient wallet balance. Please recharge ₹' . number_format(ceil($opt['total'] - $available)) . ' or more.', 402);
 
@@ -214,6 +231,10 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
         $res = shipmozo_create($data, (string) $opt['courier_id']);
         if (!$res['ok']) fail($res['error']);
         $data['provider_order_id'] = $res['order_id'];
+    } elseif ($opt['provider'] === 'dlvb2b') {
+        $res = b2b_create($data, $p);
+        if (!$res['ok']) fail($res['error']);
+        $data['provider_order_id'] = $res['job_id'];
     } else {
         $res = delhivery_create_shipment($data, $p['delhivery_name'] ?: $p['name']);
         if (!$res['ok']) fail('Delhivery: ' . $res['error']);
@@ -224,13 +245,24 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
     if ($draftId && val("SELECT id FROM shipments WHERE id=? AND user_id=? AND is_draft=1", [$draftId, $u['id']])) { unset($data['order_no']); update('shipments', $data, 'id=?', [$draftId]); $id = $draftId; }
     else $id = insert('shipments', $data);
     wallet_txn((int)$u['id'], 'debit', $opt['total'], 'Shipment ' . $res['awb'], $res['awb'], 'shipment');
-    add_event($id, 'pickup_pending', 'Booked · AWB generated', 'vishwaship.com');
+    add_event($id, 'pickup_pending', $opt['provider'] === 'dlvb2b' ? (!empty($res['pending']) ? 'Booked · LR number being generated by Delhivery' : 'Booked · LR generated') : 'Booked · AWB generated', 'vishwaship.com');
     db()->commit();
     if ($opt['provider'] === 'delhivery') delhivery_pickup_request($p['delhivery_name'] ?: $p['name'], $data['pickup_date'], 1);
+    if ($opt['provider'] === 'dlvb2b') b2b_pickup_request((string) b2b_ensure_warehouse(one("SELECT * FROM pickup_addresses WHERE id=?", [$p['id']])), $data['pickup_date'], $data['boxes']);
     activity((int)$u['id'], 'Booked shipment', $res['awb'] . ' · ' . $data['to_city'] . ' ' . $to . ' · ₹' . $opt['total']);
     return one("SELECT * FROM shipments WHERE id=?", [$id]);
 }
 
+route('GET', '/me/shipments/(\d+)/b2b-label', function ($id) {
+    $u = require_customer();
+    $s = my_shipment((int) $id, $u);
+    if ($s['provider'] !== 'dlvb2b') fail('Not a Delhivery Cargo shipment');
+    if (str_starts_with((string) $s['awb'], 'PENDING-')) fail('LR number is still being generated — try again in a minute');
+    $size = in_array(in('size', 'sm'), ['sm', 'md', 'a4'], true) ? in('size', 'sm') : 'sm';
+    $r = b2b_label((string) $s['awb'], $size);
+    if (!$r['ok']) fail($r['error']);
+    return ['url' => $r['url']];
+});
 route('POST', '/me/shipments', function () { $u = require_customer(); return book_shipment($u, body(), (bool) in('draft')); });
 route('GET', '/me/drafts', function () { $u = require_customer(); return ['items' => all("SELECT * FROM shipments WHERE user_id=? AND is_draft=1 ORDER BY id DESC", [$u['id']])]; });
 route('DELETE', '/me/drafts/(\d+)', function ($id) { $u = require_customer(); q("DELETE FROM shipments WHERE id=? AND user_id=? AND is_draft=1", [$id, $u['id']]); return ['ok' => true]; });
@@ -259,6 +291,7 @@ route('POST', '/me/shipments/(\d+)/cancel', function ($id) {
     $s = my_shipment((int)$id, $u);
     if ($s['status'] !== 'pickup_pending') fail('Only shipments not yet picked up can be cancelled');
     if (($s['provider'] ?? 'delhivery') === 'shipmozo') { if (!shipmozo_cancel($s)) fail('Shipmozo could not cancel this shipment. Please contact support.'); }
+    elseif ($s['provider'] === 'dlvb2b') { if (!b2b_cancel($s)) fail('Delhivery B2B could not cancel this LR. Please contact support.'); }
     else delhivery_cancel((string)$s['awb']);
     db()->beginTransaction();
     update('shipments', ['status' => 'cancelled'], 'id=?', [$id]);

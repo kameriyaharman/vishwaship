@@ -49,6 +49,7 @@ export default function ShipmentDetail() {
         <div><h1>Shipment Details & Tracking</h1><p>AWB {s.awb} · status auto-updated from Delhivery</p></div>
         <div className="row wrap">
           {s.status !== 'cancelled' && <LabelButton ids={s.id} small={false} />}
+          {s.provider === 'dlvb2b' && s.status !== 'cancelled' && <AsyncBtn className="btn btn-outline" onClick={async () => { try { const r = await api(`/me/shipments/${s.id}/b2b-label?size=sm`); window.open(r.url, '_blank'); } catch (e) { toast(e.message, true); } }}>Delhivery LR label (PDF)</AsyncBtn>}
           <a className="btn btn-outline" href={`/invoice/?shipment=${s.id}`} target="_blank">Shipping invoice</a>
           <a className="btn btn-outline" href={`/buyer-invoice/?id=${s.id}`} target="_blank">Buyer invoice</a>
           <button className="btn btn-outline" onClick={() => setTicket(true)}>Raise ticket</button>

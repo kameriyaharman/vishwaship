@@ -35,7 +35,7 @@ if ($path === '/' || $path === '/health') {
 }
 
 // run migrations only when schema version changes
-const SCHEMA_V = '8';
+const SCHEMA_V = '9';
 try { $sv = val("SELECT v FROM settings WHERE k='schema'"); } catch (Throwable $e) { $sv = null; }
 if ($sv !== SCHEMA_V) { migrate(); set_setting('schema', SCHEMA_V); }
 

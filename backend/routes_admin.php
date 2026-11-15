@@ -471,7 +471,7 @@ route('PUT', '/admin/content', function () {
     set_setting('content', array_merge(content(), $c));
     return ['ok' => true];
 });
-const GENERAL_KEYS = ['company_name', 'company_gstin', 'company_address', 'invoice_prefix', 'require_kyc', 'min_recharge', 'low_wallet_threshold', 'pickup_slots',
+const GENERAL_KEYS = ['company_name', 'company_gstin', 'company_address', 'company_city', 'company_state', 'company_pincode', 'company_phone', 'invoice_prefix', 'require_kyc', 'min_recharge', 'low_wallet_threshold', 'pickup_slots',
     'payment_gateway', 'razorpay_key_id', 'gst_pct', 'early_cod_fee_pct', 'early_cod_cycle', 'notif_credit_price', 'notif_provider_enabled', 'notif_provider_name', 'cod_confirm_enabled'];
 route('GET', '/admin/settings', function () {
     require_admin('content');
@@ -533,6 +533,27 @@ route('PUT', '/admin/shipmozo', function () {
     return ['ok' => true];
 });
 route('POST', '/admin/shipmozo/test', function () { require_admin('delhivery'); return shipmozo_test(); });
+route('GET', '/admin/dlvb2b', function () {
+    require_admin('delhivery');
+    $pw = setting('dlvb2b_password', '');
+    return ['enabled' => setting('dlvb2b_enabled') === '1', 'username' => setting('dlvb2b_username'), 'has_password' => $pw !== '', 'password_masked' => $pw ? str_repeat('•', 10) : '',
+        'base' => setting('dlvb2b_base'), 'min_kg' => setting('dlvb2b_min_kg', '10'), 'freight_mode' => setting('dlvb2b_freight_mode', 'fop'), 'rov' => setting('dlvb2b_rov', '0') === '1',
+        'company_gstin' => setting('company_gstin'), 'live' => b2b_on(), 'shipments' => (int) val("SELECT COUNT(*) FROM shipments WHERE provider='dlvb2b'")];
+});
+route('PUT', '/admin/dlvb2b', function () {
+    require_admin('delhivery');
+    foreach (['enabled' => 'dlvb2b_enabled', 'username' => 'dlvb2b_username', 'base' => 'dlvb2b_base', 'min_kg' => 'dlvb2b_min_kg', 'freight_mode' => 'dlvb2b_freight_mode', 'rov' => 'dlvb2b_rov'] as $in => $k) {
+        $v = in($in);
+        if ($v === null) continue;
+        if (is_bool($v)) $v = $v ? '1' : '0';
+        set_setting($k, is_string($v) ? trim($v) : (string) $v);
+    }
+    if (in('password')) { set_setting('dlvb2b_password', (string) in('password')); set_setting('dlvb2b_jwt', ''); set_setting('dlvb2b_fail_at', '0'); }
+    if (in('username') !== null) set_setting('dlvb2b_jwt', '');
+    if (in('clear')) { foreach (['dlvb2b_password', 'dlvb2b_username', 'dlvb2b_jwt'] as $k) set_setting($k, ''); set_setting('dlvb2b_enabled', '0'); }
+    return ['ok' => true];
+});
+route('POST', '/admin/dlvb2b/test', function () { require_admin('delhivery'); return b2b_test(); });
 route('POST', '/admin/quote-preview', function () {
     require_admin();
     $u = in('customer_id') ? one("SELECT * FROM users WHERE id=?", [(int) in('customer_id')]) : null;

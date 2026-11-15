@@ -117,7 +117,7 @@ function apply_status(array $s, string $new, string $label, string $location = '
 }
 
 function delhivery_sync(?array $ids = null): array {
-    $n = 0;
+    $n = b2b_sync();
     if (shipmozo_on()) {
         foreach (all("SELECT * FROM shipments WHERE provider='shipmozo' AND status NOT IN ('delivered','rto_delivered','cancelled') AND awb IS NOT NULL LIMIT 200") as $s) {
             $d = shipmozo_track((string) $s['awb']); if (!$d) continue;

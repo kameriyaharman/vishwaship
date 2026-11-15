@@ -24,6 +24,7 @@ export default function Delhivery() {
         <AsyncBtn onClick={save}>Save Delhivery</AsyncBtn>
       </PageHead>
  <Shipmozo />
+ <DelhiveryB2B />
       <h2 className="mt24 mb12" style={{ fontSize: 18 }}>Delhivery (direct)</h2>
       {d.mode !== 'live' && <div className="note mb12" style={{ background: 'var(--yellow-soft)', color: '#6a5200' }}><b>Simulation mode is ON.</b> Bookings get a generated AWB and use your rate card; update statuses from each shipment page. Add your Delhivery API token, choose <b>Live</b> and Save to go live.</div>}
       <div className="split-3">
@@ -88,7 +89,7 @@ function Shipmozo() {
           <div className="field"><label>Public key</label><input className="input" value={f.public_key} onChange={set('public_key')} placeholder="From Shipmozo panel → Profile → API keys" /></div>
           <div className="field"><label>Private key</label><input className="input" type="password" value={f.private_key} onChange={set('private_key')} placeholder={d.private_masked || 'Paste private key'} /></div>
           <div className="grid2">
-            <div className="field"><label>Warehouse ID (pickup)</label><input className="input" value={f.warehouse_id} onChange={set('warehouse_id')} /></div>
+            <div className="field"><label>Fallback warehouse ID</label><input className="input" value={f.warehouse_id} onChange={set('warehouse_id')} /></div>
             <div className="field"><label>Courier options to show</label><input className="input" type="number" min="1" max="10" value={f.max_options} onChange={set('max_options')} /></div>
           </div>
           {wh.length > 0 && <div className="note">Warehouses: {wh.map((w) => <button key={w.id} className="link small" style={{ marginRight: 10 }} onClick={() => setF({ ...f, warehouse_id: w.id })}>{w.id} · {w.name} {w.pincode}</button>)}</div>}
@@ -108,7 +109,46 @@ function Shipmozo() {
           {prev && <div className="note">Delhi 110034 → Pune 411001, 1 kg (global commission {prev.markup}%):{prev.options.map((o) => <div key={o.service} className="row between small"><span>{o.name} <span className="muted">({o.provider})</span></span><span>API ₹{o.base} → <b>₹{o.freight}</b></span></div>)}{!prev.options.some((o) => o.provider === 'shipmozo') && <div className="small red mt8">No Shipmozo rates returned — check API logs below.</div>}</div>}
         </div>
       </div>
-      <p className="tiny muted mt12">Booking flow with Shipmozo: rate-calculator → push-order → assign-courier (AWB) → schedule-pickup. Status sync via track-order. Every call appears in API logs below.</p>
+      <p className="tiny muted mt12">Each customer pickup address is registered on Shipmozo automatically (create-warehouse); the fallback ID is used only if that fails. Booking flow: rate-calculator → push-order → assign-courier (AWB) → schedule-pickup. Status sync via track-order. Every call appears in API logs below.</p>
+    </div>
+  );
+}
+
+function DelhiveryB2B() {
+  const { data: d, err, reload } = useLoad(() => api('/admin/dlvb2b'), []);
+  const [f, setF] = useState(null);
+  const [prev, setPrev] = useState(null);
+  useEffect(() => { if (d) setF({ enabled: d.enabled, username: d.username, password: '', base: d.base, min_kg: d.min_kg, freight_mode: d.freight_mode, rov: d.rov }); }, [d]);
+  if (err) return <ErrorBox err={err} onRetry={reload} />;
+  if (!f) return <Spinner />;
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  const save = async () => { const b = { ...f }; if (!b.password) delete b.password; await api('/admin/dlvb2b', { method: 'PUT', body: b }); reload(); };
+  return (
+    <div className="card mb16" style={{ border: '2px solid var(--navy)' }}>
+      <div className="card-h"><h3><Icon name="truck" />Delhivery Cargo — B2B / heavy cargo (LTL)</h3><Chip s={d.live ? 'connected' : 'pending'} label={d.live ? 'Live' : 'Off'} /></div>
+      <div className="split">
+        <div className="col">
+          <label className="check"><input type="checkbox" checked={f.enabled} onChange={set('enabled')} /> <b>Show Delhivery Cargo (B2B) in booking</b></label>
+          <div className="field"><label>B2B API username</label><input className="input" value={f.username} onChange={set('username')} placeholder="e.g. VISHWASHIPB2B (from Delhivery SPOC)" autoComplete="off" /></div>
+          <div className="field"><label>B2B API password</label><input className="input" type="password" value={f.password} onChange={set('password')} placeholder={d.has_password ? d.password_masked + ' (saved)' : 'API user password'} autoComplete="new-password" /></div>
+          <div className="grid2">
+            <div className="field"><label>Show from weight (kg)</label><input className="input" type="number" min="0" step="1" value={f.min_kg} onChange={set('min_kg')} /></div>
+            <div className="field"><label>Freight mode</label><select className="select" value={f.freight_mode} onChange={set('freight_mode')}><option value="fop">FOP — bill to Vishwaship</option><option value="fod">FOD — consignee pays freight</option></select></div>
+          </div>
+          <label className="check"><input type="checkbox" checked={f.rov} onChange={set('rov')} /> Add Delhivery risk cover (ROV insurance)</label>
+        </div>
+        <div className="col">
+          <div className="field"><label>API base URL</label><input className="input" value={f.base} onChange={set('base')} /><div className="tiny muted mt8">Live: https://ltl-clients-api.delhivery.com · Staging: https://ltl-clients-api-dev.delhivery.com</div></div>
+          {!d.company_gstin && <div className="err small">Company GSTIN is empty — Delhivery B2B bills freight to your company. Add it in Website Content → General.</div>}
+          <div className="row wrap mt8">
+            <AsyncBtn onClick={async () => { await save(); toast('Delhivery B2B settings saved'); }}>Save</AsyncBtn>
+            <AsyncBtn className="btn btn-outline" onClick={async () => { await save(); const r = await api('/admin/dlvb2b/test', { method: 'POST' }); toast(r.message, !r.ok); }}>Test login</AsyncBtn>
+            <AsyncBtn className="btn btn-outline" onClick={async () => { await save(); setPrev(await api('/admin/quote-preview', { method: 'POST', body: { from: '110034', to: '411001', weight: Math.max(+f.min_kg || 10, 20), l: 60, b: 40, h: 40 } })); }}>Preview rates</AsyncBtn>
+          </div>
+          {prev && <div className="note">Delhi 110034 → Pune 411001, {Math.max(+f.min_kg || 10, 20)} kg:{prev.options.filter((o) => o.provider === 'dlvb2b').map((o) => <div key={o.service} className="row between small"><span>{o.name}</span><span>API ₹{o.base} → <b>₹{o.freight}</b></span></div>)}{!prev.options.some((o) => o.provider === 'dlvb2b') && <div className="small red mt8">No B2B rate returned — check API logs below.</div>}</div>}
+        </div>
+      </div>
+      <p className="tiny muted mt12">Flow: login (JWT) → pincode-service → freight/estimate → client-warehouse/create (once per customer pickup address) → manifest (LR number) → pickup request → LR label (PDF) → lrn/track → lrn/cancel. {d.shipments} B2B shipment(s) so far.</p>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { Spinner, toast, Modal } from '@/components/ui';
 import { api, inr, kg, qp, today, dLong, uploadFile } from '@/lib/api';
 import { useConfig } from '@/lib/config';
 
-const EMPTY = { to_name: '', to_phone: '', to_pincode: '', to_city: '', to_state: '', to_address: '', product: '', invoice_value: '', hsn: '', order_ref: '', invoice_file_id: '', ewaybill_no: '', ewaybill_file_id: '', payment_mode: 'prepaid', cod_amount: '', weight: '', length: '', breadth: '', height: '', service: 'surface' };
+const EMPTY = { to_name: '', to_phone: '', to_pincode: '', to_city: '', to_state: '', to_address: '', product: '', invoice_value: '', hsn: '', order_ref: '', invoice_file_id: '', ewaybill_no: '', ewaybill_file_id: '', payment_mode: 'prepaid', cod_amount: '', weight: '', boxes: '1', length: '', breadth: '', height: '', service: 'surface' };
 
 function Stepper({ step }) {
   const S = ['Addresses', 'Package', 'Rate & pay', 'AWB'];
@@ -77,7 +77,7 @@ export default function Book() {
     qTimer.current = setTimeout(async () => {
       try {
         setQErr('');
-        const q = await api('/me/quote', { method: 'POST', body: { from: pickup.pincode, to: f.to_pincode, weight: +f.weight, l: +f.length || 0, b: +f.breadth || 0, h: +f.height || 0, payment: f.payment_mode, cod_amount: +f.cod_amount || +f.invoice_value || 0 } });
+        const q = await api('/me/quote', { method: 'POST', body: { from: pickup.pincode, to: f.to_pincode, weight: +f.weight, l: +f.length || 0, b: +f.breadth || 0, h: +f.height || 0, payment: f.payment_mode, cod_amount: +f.cod_amount || +f.invoice_value || 0, invoice_value: +f.invoice_value || 0, boxes: +f.boxes || 1 } });
         setQuote(q);
         if (!manualSvc && q.options.length) {
           const a = me.prefs?.auto_assign || {};
@@ -91,7 +91,7 @@ export default function Book() {
         } else if (!q.options.find((o) => o.service === f.service) && q.options[0]) setF((x) => ({ ...x, service: q.options[0].service }));
       } catch (e) { setQErr(e.message); setQuote(null); }
     }, 350);
-  }, [step, pickup, f.weight, f.length, f.breadth, f.height, f.payment_mode, f.cod_amount, f.invoice_value, f.to_pincode, f.service]);
+  }, [step, pickup, f.weight, f.boxes, f.length, f.breadth, f.height, f.payment_mode, f.cod_amount, f.invoice_value, f.to_pincode, f.service]);
 
   const next1 = () => {
     setErr('');
@@ -114,7 +114,7 @@ export default function Book() {
     if (+f.invoice_value > 50000 && !f.ewaybill_no && !f.ewaybill_file_id) return setErr('E-way bill is required for invoice value above ₹50,000 — enter the number or upload it.');
     setBusy(true);
     try {
-      const s = await api('/me/shipments', { method: 'POST', body: { ...f, weight: +f.weight, pickup_id: pickupId, pickup_date: pdate, pickup_slot: slot, draft_id: draftId } });
+      const s = await api('/me/shipments', { method: 'POST', body: { ...f, weight: +f.weight, boxes: +f.boxes || 1, pickup_id: pickupId, pickup_date: pdate, pickup_slot: slot, draft_id: draftId } });
       setDone(s); setStep(4); refresh(); window.scrollTo(0, 0);
     } catch (e) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -192,7 +192,8 @@ export default function Book() {
                     </div>
                   </div>
                 )}
-                <div className="field"><label>Actual weight (kg)</label><input className="input hl" type="number" step="0.01" value={f.weight} onChange={set('weight')} /></div>
+                <div className="field"><label>Actual weight (kg){+f.boxes > 1 ? ' — all boxes together' : ''}</label><input className="input hl" type="number" step="0.01" value={f.weight} onChange={set('weight')} /></div>
+                <div className="field"><label>Number of boxes</label><input className="input" type="number" min="1" step="1" value={f.boxes} onChange={set('boxes')} /><div className="tiny muted" style={{ marginTop: 4 }}>More than 1 box or heavy cargo? Delhivery Cargo (B2B) rates appear automatically.</div></div>
                 <div className="field"><label>Payment mode</label><select className="select" value={f.payment_mode} onChange={set('payment_mode')}><option value="prepaid">Prepaid</option><option value="cod" disabled={pin && !pin.cod}>COD</option></select></div>
                 {f.payment_mode === 'cod' && <div className="field" style={{ gridColumn: '1/-1' }}><label>COD amount to collect (₹)</label><input className="input" type="number" value={f.cod_amount} placeholder={f.invoice_value} onChange={set('cod_amount')} /></div>}
               </div>

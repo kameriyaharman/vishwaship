@@ -100,9 +100,9 @@ function migrate(): void {
 
     // v7: change requests (documents, KYC docs, COD remittance detail, ticket conversations)
     $addCols = [
-        'shipments' => ['hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
+        'shipments' => ['boxes' => 'INT NOT NULL DEFAULT 1', 'hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
         'users' => ['account_type' => "VARCHAR(20) NOT NULL DEFAULT 'individual'", 'aadhaar_doc_id' => 'INT NULL', 'pan_doc_id' => 'INT NULL', 'cheque_doc_id' => 'INT NULL', 'gst_doc_id' => 'INT NULL', 'kyc_submitted_at' => 'DATETIME NULL', 'kyc_reviewed_at' => 'DATETIME NULL'],
-        'pickup_addresses' => ['sm_warehouse_id' => 'VARCHAR(40) NULL', 'sm_error' => 'VARCHAR(255) NULL'],
+        'pickup_addresses' => ['sm_warehouse_id' => 'VARCHAR(40) NULL', 'sm_error' => 'VARCHAR(255) NULL', 'b2b_wh_name' => 'VARCHAR(60) NULL', 'b2b_error' => 'VARCHAR(255) NULL'],
         'cod_remittances' => ['ref_no' => 'VARCHAR(30) NULL', 'wallet_used' => 'DECIMAL(12,2) NOT NULL DEFAULT 0', 'amount_paid' => 'DECIMAL(12,2) NULL', 'paid_at' => 'DATETIME NULL'],
         'tickets' => ['ticket_no' => 'VARCHAR(20) NULL', 'category' => 'VARCHAR(60) NULL', 'awb' => 'VARCHAR(40) NULL', 'priority' => "VARCHAR(10) NOT NULL DEFAULT 'normal'", 'assignee_id' => 'INT NULL',
             'resolution' => 'TEXT NULL', 'updated_at' => 'DATETIME NULL', 'customer_seen_at' => 'DATETIME NULL', 'last_reply_by' => 'VARCHAR(10) NULL'],
@@ -122,6 +122,9 @@ function migrate(): void {
     q("UPDATE cod_remittances SET amount_paid=amount, paid_at=COALESCE(paid_at, CONCAT(remit_date, ' 12:00:00')) WHERE amount_paid IS NULL AND status='paid'");
     $cc = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
     if (is_array($cc) && (($cc['hero_image'] ?? '') === '' || str_contains((string) ($cc['hero_image'] ?? ''), 'images.hostinger.com'))) { $cc['hero_image'] = '/hero.jpg'; set_setting('content', $cc); }
+    // v9: Delhivery B2B (LTL / heavy cargo)
+    foreach (['dlvb2b_enabled' => '0', 'dlvb2b_username' => '', 'dlvb2b_password' => '', 'dlvb2b_base' => 'https://ltl-clients-api.delhivery.com',
+        'dlvb2b_min_kg' => '10', 'dlvb2b_freight_mode' => 'fop', 'dlvb2b_rov' => '0'] as $k => $v) q("INSERT IGNORE INTO settings (k,v) VALUES (?,?)", [$k, $v]);
     // v6: multi-provider (Delhivery + Shipmozo)
     foreach (['provider' => "VARCHAR(20) NOT NULL DEFAULT 'delhivery'", 'courier_name' => 'VARCHAR(80) NULL', 'courier_id' => 'VARCHAR(40) NULL', 'provider_order_id' => 'VARCHAR(60) NULL'] as $c => $def)
         if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND COLUMN_NAME=?", [$c])) $pdo->exec("ALTER TABLE shipments ADD COLUMN `$c` $def");
