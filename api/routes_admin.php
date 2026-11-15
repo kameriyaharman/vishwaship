@@ -514,14 +514,14 @@ route('GET', '/admin/shipmozo', function () {
     require_admin('delhivery');
     $pk = setting('shipmozo_private_key', '');
     return ['enabled' => setting('shipmozo_enabled') === '1', 'public_key' => setting('shipmozo_public_key'), 'private_masked' => $pk ? str_repeat('•', 12) . substr($pk, -4) : '',
-        'has_private' => $pk !== '', 'base' => setting('shipmozo_base'), 'warehouse_id' => setting('shipmozo_warehouse_id'), 'package_type' => setting('shipmozo_package_type'),
+        'has_private' => $pk !== '', 'base' => setting('shipmozo_base'), 'warehouse_id' => setting('shipmozo_warehouse_id'), 'package_type' => setting('shipmozo_package_type'), 'b2b_package_type' => setting('shipmozo_b2b_package_type', 'B2B'),
         'rov_type' => setting('shipmozo_rov_type'), 'max_options' => setting('shipmozo_max_options'), 'schedule_pickup' => setting('shipmozo_schedule_pickup'),
         'delhivery_enabled' => setting('delhivery_enabled', '1') === '1', 'live' => shipmozo_on(),
         'shipments' => (int) val("SELECT COUNT(*) FROM shipments WHERE provider='shipmozo'")];
 });
 route('PUT', '/admin/shipmozo', function () {
     require_admin('delhivery');
-    foreach (['enabled' => 'shipmozo_enabled', 'public_key' => 'shipmozo_public_key', 'base' => 'shipmozo_base', 'warehouse_id' => 'shipmozo_warehouse_id', 'package_type' => 'shipmozo_package_type',
+    foreach (['enabled' => 'shipmozo_enabled', 'public_key' => 'shipmozo_public_key', 'base' => 'shipmozo_base', 'warehouse_id' => 'shipmozo_warehouse_id', 'package_type' => 'shipmozo_package_type', 'b2b_package_type' => 'shipmozo_b2b_package_type',
         'rov_type' => 'shipmozo_rov_type', 'max_options' => 'shipmozo_max_options', 'schedule_pickup' => 'shipmozo_schedule_pickup', 'delhivery_enabled' => 'delhivery_enabled'] as $in => $k) {
         $v = in($in);
         if ($v === null) continue;
