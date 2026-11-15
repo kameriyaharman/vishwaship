@@ -8,12 +8,12 @@ import { inr, dShort } from '@/lib/api';
 import { logoSrc } from './RateOption';
 
 const TILES = [
-  ['new', 'New Orders', '📦', '/integrations/?tab=oms', 't-blue'],
-  ['assigned', 'Pickup Pending', '🗂️', '/shipments/?tab=pickup_pending', 't-amber'],
-  ['transit', 'In Transit', '🚚', '/shipments/?tab=in_transit_all', 't-green'],
-  ['all', 'All Orders', '🧾', '/shipments/', 't-orange'],
-  ['ndr', 'NDR', '↩️', '/ndr/', 't-rose'],
-  ['rto', 'RTO', '🔁', '/shipments/?tab=rto', 't-plum'],
+  ['new', 'New Orders', 'cart', '/integrations/?tab=oms', 't-blue'],
+  ['assigned', 'Pickup Pending', 'clock', '/shipments/?tab=pickup_pending', 't-amber'],
+  ['transit', 'In Transit', 'truck', '/shipments/?tab=in_transit_all', 't-green'],
+  ['all', 'All Orders', 'box', '/shipments/', 't-orange'],
+  ['ndr', 'NDR', 'alert', '/ndr/', 't-rose'],
+  ['rto', 'RTO', 'undo', '/shipments/?tab=rto', 't-plum'],
 ];
 
 /** Shipmozo-style mobile home: search, wallet + credits, analytics tiles, recent orders, wallet txns, quick actions */
@@ -27,13 +27,13 @@ export default function MobileHome({ d, me }) {
         <Icon name="search" size={18} /><input placeholder="Search orders, AWB, phone" value={q} onChange={(e) => setQ(e.target.value)} />
       </form>
       <div className="mh-2">
-        <Link href="/wallet/" className="mh-card"><span className="mh-big">👛</span><b>{inr(d.wallet, 2)}</b><span>Wallet Balance</span></Link>
-        <Link href="/billing/?view=notif" className="mh-card"><span className="mh-big">🪙</span><b>{d.notif_credits}</b><span>Notification Credits</span></Link>
+        <Link href="/wallet/" className="mh-card"><span className="mh-ic"><Icon name="wallet" size={22} /></span><b>{inr(d.wallet, 2)}</b><span>Wallet Balance</span></Link>
+        <Link href="/billing/?view=notif" className="mh-card"><span className="mh-ic blue"><Icon name="bell" size={22} /></span><b>{d.notif_credits}</b><span>Notification Credits</span></Link>
       </div>
       {me.kyc_status !== 'verified' && <Link href="/settings/?tab=kyc" className="mh-kyc"><Icon name="alert" size={16} />{me.kyc_status === 'submitted' ? 'KYC pending approval — tap to view' : 'Complete your KYC to start shipping'}</Link>}
       <h3 className="mh-h">Analytics</h3>
       <div className="mh-grid">
-        {TILES.map(([k, l, e, href, cls]) => <Link key={k} href={href} className={'mh-tile ' + cls}><span className="e">{e}</span><span><b>{n[k] ?? 0}</b><span>{l}</span></span></Link>)}
+        {TILES.map(([k, l, e, href, cls]) => <Link key={k} href={href} className={'mh-tile ' + cls}><span className="e"><Icon name={e} size={20} /></span><span><b>{n[k] ?? 0}</b><span>{l}</span></span></Link>)}
       </div>
       <div className="mh-box">
         <div className="row between"><h3 className="mh-h" style={{ margin: 0 }}>Recent Orders</h3><Link href="/shipments/" className="link small">View all</Link></div>

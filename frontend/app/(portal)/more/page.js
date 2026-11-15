@@ -47,8 +47,8 @@ export default function More() {
         <Link href="/settings/?tab=profile" className="btn btn-outline btn-sm">Edit</Link>
       </div>
       <div className="mh-2">
-        <Link href="/wallet/" className="mh-card"><span className="mh-big">👛</span><b>{inr(me.wallet_balance, 2)}</b><span>Wallet Balance</span></Link>
-        <Link href="/settings/?tab=kyc" className="mh-card"><span className="mh-big">{me.kyc_status === 'verified' ? '✅' : '🪪'}</span><b className={me.kyc_status === 'verified' ? 'green' : ''}>{me.kyc_status === 'verified' ? 'Verified' : me.kyc_status === 'submitted' ? 'Under review' : 'Pending'}</b><span>Profile Status</span></Link>
+        <Link href="/wallet/" className="mh-card"><span className="mh-ic"><Icon name="wallet" size={22} /></span><b>{inr(me.wallet_balance, 2)}</b><span>Wallet Balance</span></Link>
+        <Link href="/settings/?tab=kyc" className="mh-card"><span className={'mh-ic ' + (me.kyc_status === 'verified' ? 'green' : 'amber')}><Icon name={me.kyc_status === 'verified' ? 'check' : 'user'} size={22} /></span><b className={me.kyc_status === 'verified' ? 'green' : ''}>{me.kyc_status === 'verified' ? 'Verified' : me.kyc_status === 'submitted' ? 'Under review' : 'Pending'}</b><span>Profile Status</span></Link>
       </div>
       {GROUPS.map(([g, rows]) => (
         <div key={g}>

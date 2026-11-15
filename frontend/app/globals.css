@@ -644,3 +644,11 @@ html.dark .shell .more-row .ic { background: var(--gray-soft); color: var(--oran
 html.dark .shell .more-row.danger { color: #ff7a7a; }
 html.dark .shell .chip { filter: brightness(.9) saturate(1.2); }
 .asset-v20261115b { display: none; }
+/* clean icon badges (replace emoji) */
+.mh-ic { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: var(--orange-soft); color: var(--orange); margin-bottom: 6px; }
+.mh-ic.blue { background: #e9f0ff; color: #3563e9; } .mh-ic.green { background: #e5f6ec; color: #1f9d55; } .mh-ic.amber { background: #fff3df; color: #d48806; }
+.mh-tile .e { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: #fff; flex-shrink: 0; font-size: 0; box-shadow: 0 1px 2px rgba(11,31,58,.06); }
+.t-blue .e { color: #3563e9; } .t-amber .e { color: #d48806; } .t-green .e { color: #1f9d55; }
+.t-orange .e { color: var(--orange); } .t-rose .e { color: #e0445a; } .t-plum .e { color: #8a4fd0; }
+html.dark .shell .mh-tile .e { background: var(--gray-soft); }
+html.dark .shell .mh-ic { background: var(--gray-soft); }
