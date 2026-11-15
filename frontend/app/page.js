@@ -123,7 +123,7 @@ export default function Home() {
               </tbody>
             </table>
           </div>
-          <p className="tiny muted mt8">First 500 g + every additional 500 g, before GST. COD charges and volumetric weight (L×B×H ÷ {cfg?.vol_divisor || 5000}) apply.</p>
+          <p className="tiny muted mt8">First 500 g + every additional 500 g, before GST (the rate calculator shows the final amount incl. GST). COD charges and volumetric weight (L×B×H ÷ {cfg?.vol_divisor || 5000}) apply.</p>
         </div>
       </section>
 

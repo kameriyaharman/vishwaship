@@ -219,68 +219,81 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
     $vol = round($vol, 2);
     [$l, $b, $h] = [$bl[0]['l'], $bl[0]['b'], $bl[0]['h']];
     $charge = max($weight, $vol);
+    $kgSlab = slab_weight($charge);
     $zone = zone_for($from, $to);
-    $markup = markup_for($user);
     $gstPct = (float) setting('gst_pct', 18);
-    $out = [];
     $dis = $user ? (array) (prefs($user)['disabled_services'] ?? []) : [];
+    $pricePay = $topay ? 'prepaid' : $payment;
+    $out = [];
+    $push = function (?array $pr, array $meta) use (&$out) { if ($pr) $out[] = $meta + $pr; };
     $realLive = shipmozo_on() || b2b_on();
-    foreach (service_meta() as $svc => $meta) {
-        if ($kind === 'b2b' || $topay) break; // direct Delhivery = B2C parcels only
-        if (setting('delhivery_enabled', '1') !== '1') break;
-        if (!delhivery_live() && $realLive) break; // simulation would hand out fake AWBs next to real couriers
-        if (setting("service_{$svc}_enabled", '1') !== '1') continue;
-        if ($user && in_array($svc, (array) (prefs($user)['disabled_services'] ?? []))) continue;
-        $base = null;
-        if (delhivery_live()) $base = delhivery_cost($svc, $from, $to, $charge, $payment, $codAmount);
-        if ($base === null) $base = base_rate_card($svc, $zone, $charge);
-        $freight = apply_markup($base, $markup);
-        $codBase = 0; $cod = 0;
-        if ($payment === 'cod') {
-            $codBase = max((float) setting('cod_fixed', 30), $codAmount * (float) setting('cod_pct', 1.5) / 100);
-            $cod = apply_markup($codBase, $markup);
+
+    // ---- Delhivery B2C (direct API) — Surface / Express
+    if ($kind === 'b2c' && !$topay && svc_pricing('delhivery_b2c')['enabled'] && setting('delhivery_enabled', '1') === '1' && (delhivery_live() || !$realLive)) {
+        foreach (service_meta() as $svc => $meta) {
+            if (setting("service_{$svc}_enabled", '1') !== '1' || in_array($svc, $dis)) continue;
+            $api = delhivery_live() ? delhivery_cost($svc, $from, $to, $kgSlab, $payment, $codAmount) : base_rate_card($svc, $zone, $charge);
+            $push(price_option('delhivery_b2c', $api, $svc, $zone, $kgSlab, $user, $pricePay, $codAmount, false), [
+                'service' => $svc, 'provider' => 'delhivery', 'courier_id' => null, 'name' => $meta['name'], 'carrier' => 'Delhivery', 'via' => 'Delhivery B2C',
+                'logo' => courier_logo('delhivery'), 'days' => $meta['days'], 'eta' => date('Y-m-d', strtotime('+' . $meta['eta'] . ' days'))]);
         }
-        $gst = round(($freight + $cod) * $gstPct / 100, 2);
-        $out[] = [
-            'service' => $svc, 'provider' => 'delhivery', 'courier_id' => null, 'name' => $meta['name'], 'days' => $meta['days'],
-            'eta' => date('Y-m-d', strtotime('+' . $meta['eta'] . ' days')),
-            'base' => $base, 'cod_base' => $codBase, 'freight' => $freight, 'cod_charge' => $cod,
-            'gst' => $gst, 'total' => round($freight + $cod + $gst, 2),
-        ];
     }
-    $smPkg = $kind === 'b2b' ? setting('shipmozo_b2b_package_type', 'B2B') : setting('shipmozo_package_type', 'SPS');
-    $smRates = (!in_array('shipmozo', $dis) && !$topay) ? shipmozo_rates($from, $to, $charge, $l, $b, $h, $payment, $codAmount, $value ?: $codAmount, $boxes, $smPkg, $bl) : [];
-    foreach ($smRates as $r) {
-        $isB2b = (bool) preg_match('/\b(b2b|ltl|ptl|cargo)\b/i', $r['name']);
-        if ($kind === 'b2c' && $isB2b) continue;
-        $freight = apply_markup($r['base'], $markup);
-        $gst = round($freight * $gstPct / 100, 2);
-        $out[] = ['service' => 'sm_' . $r['courier_id'], 'provider' => 'shipmozo', 'courier_id' => $r['courier_id'], 'name' => $r['name'], 'days' => $r['days'] ?: 'As per courier',
-            'eta' => $r['eta'] ?: date('Y-m-d', strtotime('+4 days')), 'base' => $r['base'], 'cod_base' => 0, 'freight' => $freight, 'cod_charge' => 0, 'gst' => $gst, 'total' => round($freight + $gst, 2)];
+
+    // ---- Shipmozo B2C / B2B (many couriers)
+    $smKey = $kind === 'b2b' ? 'shipmozo_b2b' : 'shipmozo_b2c';
+    if (!in_array('shipmozo', $dis) && !$topay && svc_pricing($smKey)['enabled'] && shipmozo_on()) {
+        $smPkg = $kind === 'b2b' ? setting('shipmozo_b2b_package_type', 'B2B') : setting('shipmozo_package_type', 'SPS');
+        $rates = shipmozo_rates($from, $to, $charge, $l, $b, $h, $payment, $codAmount, $value ?: $codAmount, $boxes, $smPkg, $bl);
+        $rates = array_values(array_filter($rates, function ($r) use ($kind) {
+            $isB2b = (bool) preg_match('/\b(b2b|ltl|ptl|cargo)\b/i', $r['name']);
+            return $kind === 'b2b' ? true : !$isB2b;
+        }));
+        if (svc_pricing($smKey)['mode'] === 'card' && $rates) { // own rate card → one offer, booked on the cheapest courier
+            usort($rates, fn($x, $y) => $x['base'] <=> $y['base']);
+            $rates = [$rates[0]];
+        }
+        foreach ($rates as $r) {
+            $push(price_option($smKey, (float) $r['base'], $kind === 'b2b' ? 'sm_b2b' : 'sm_b2c', $zone, $kgSlab, $user, $payment, $codAmount, true), [
+                'service' => 'sm_' . $r['courier_id'], 'provider' => 'shipmozo', 'courier_id' => $r['courier_id'], 'name' => $r['name'],
+                'carrier' => trim(preg_replace('/\s*\d+(\.\d+)?\s*k\s*g.*$/i', '', $r['name'])) ?: $r['name'], 'via' => svc_catalog()[$smKey]['label'],
+                'logo' => courier_logo($r['name']), 'days' => $r['days'] ?: 'As per courier', 'eta' => $r['eta'] ?: date('Y-m-d', strtotime('+4 days'))]);
+        }
     }
-    // Delhivery Cargo (B2B / LTL) — when the customer picks B2B
-    if ($kind === 'b2b' && !in_array('dlvb2b', $dis) && b2b_on()) {
+
+    // ---- Delhivery B2B (Cargo / LTL)
+    if ($kind === 'b2b' && !in_array('dlvb2b', $dis) && svc_pricing('delhivery_b2b')['enabled'] && b2b_on()) {
         $e = b2b_estimate($from, $to, $charge, $l, $b, $h, $boxes, $payment, $codAmount, $value ?: $codAmount, $bl);
         if ($e) {
-            $freight = apply_markup($e['base'], $markup);
-            $gst = round($freight * $gstPct / 100, 2);
             $tat = is_numeric($e['tat']) ? (int) $e['tat'] : 5;
-            $out[] = ['service' => 'dlvb2b', 'provider' => 'dlvb2b', 'courier_id' => null, 'name' => 'Delhivery Cargo (B2B)' . ($e['oda'] ? ' · ODA' : ''),
-                'days' => is_numeric($e['tat']) ? $tat . ' days' : '3–7 days', 'eta' => date('Y-m-d', strtotime('+' . $tat . ' days')),
-                'base' => $e['base'], 'cod_base' => 0, 'freight' => $freight, 'cod_charge' => 0, 'gst' => $gst, 'total' => round($freight + $gst, 2)];
+            $push(price_option('delhivery_b2b', $e['base'], 'dlv_b2b', $zone, $kgSlab, $user, $pricePay, $codAmount, true), [
+                'service' => 'dlvb2b', 'provider' => 'dlvb2b', 'courier_id' => null, 'name' => 'Delhivery Cargo (B2B)' . ($e['oda'] ? ' · ODA' : ''), 'carrier' => 'Delhivery',
+                'via' => 'Delhivery B2B', 'logo' => courier_logo('delhivery'), 'days' => is_numeric($e['tat']) ? $tat . ' days' : '3–7 days', 'eta' => date('Y-m-d', strtotime('+' . $tat . ' days'))]);
         }
     }
+
+    // ---- carriers added in admin (own rate card; AWB entered by admin after booking)
+    if (!$topay) foreach (manual_carriers($kind) as $c) {
+        if (in_array('carrier_' . $c['id'], $dis) || !svc_pricing('carrier_' . $c['id'])['enabled']) continue;
+        $pr = price_option('carrier_' . $c['id'], null, 'c' . $c['id'], $zone, $kgSlab, $user, $payment, $codAmount, false);
+        if (!$pr && svc_pricing('carrier_' . $c['id'])['mode'] !== 'card') continue;
+        $push($pr, ['service' => 'cr_' . $c['id'], 'provider' => 'manual', 'courier_id' => (string) $c['id'], 'name' => $c['name'] . ($c['services'] ? ' · ' . $c['services'] : ''), 'carrier' => $c['name'],
+            'via' => $c['name'], 'logo' => courier_logo($c['name'], $c['logo_file_id'] ? (int) $c['logo_file_id'] : null), 'days' => 'As per courier', 'eta' => date('Y-m-d', strtotime('+5 days'))]);
+    }
+
+    // ---- To Pay (FOD): receiver pays the courier's freight at delivery; wallet is charged only the booking fee
     if ($topay) {
         $fee = (float) setting('topay_fee', '0');
         foreach ($out as &$o) {
             $o['to_pay'] = true;
-            $o['receiver_pays'] = round(($o['base'] ?? 0) * (1 + $gstPct / 100), 2); // courier collects its freight from the receiver
-            $o['freight'] = $fee; $o['cod_charge'] = 0; $o['gst'] = round($fee * $gstPct / 100, 2); $o['total'] = round($fee + $o['gst'], 2);
+            $o['receiver_pays'] = $o['total'];
+            $o['shipping'] = $fee; $o['first_mile'] = 0; $o['other_charges'] = 0; $o['freight'] = $fee; $o['cod_charge'] = 0;
+            $o['gst'] = round($fee * $gstPct / 100, 2); $o['total'] = round($fee + $o['gst'], 2);
         }
         unset($o);
     }
+    usort($out, fn($x, $y) => ($x['to_pay'] ?? false ? $x['receiver_pays'] : $x['total']) <=> ($y['to_pay'] ?? false ? $y['receiver_pays'] : $y['total']));
     return ['zone' => $zone, 'zone_label' => ZONE_LABEL[$zone], 'kind' => $kind, 'boxes' => $boxes, 'vol_weight' => $vol, 'actual_weight' => $weight,
-        'chargeable_weight' => slab_weight($charge), 'raw_chargeable' => $charge, 'markup' => $markup, 'gst_pct' => $gstPct, 'options' => $out];
+        'chargeable_weight' => $kgSlab, 'raw_chargeable' => $charge, 'markup' => markup_for($user), 'gst_pct' => $gstPct, 'options' => $out];
 }
 
 // ---------- wallet ----------
@@ -347,3 +360,6 @@ function accept_dispute(array $d, string $note = 'Accepted by customer'): void {
 require_once __DIR__ . '/delhivery.php';
 require_once __DIR__ . '/shipmozo.php';
 require_once __DIR__ . '/delhivery_b2b.php';
+require_once __DIR__ . '/pricing.php';
+require_once __DIR__ . '/notify.php';
+require_once __DIR__ . '/channels.php';

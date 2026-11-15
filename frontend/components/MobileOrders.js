@@ -87,7 +87,7 @@ export default function MobileOrders({ d, tab, setTab, f, setF, apply, page, set
                   <div className="row between" style={{ alignItems: 'flex-end' }}>
                     <div className="small" style={{ lineHeight: 1.6 }}>
                       Order Date: {dTime(s.created_at)}<br />
-                      {s.to_city} {s.to_pincode} · {inr(+s.freight + +s.cod_charge)} shipping
+                      {s.to_city} {s.to_pincode} · {inr(s.total)} incl. GST
                     </div>
                     {s.status !== 'cancelled'
                       ? <a className="mo-label" href={`/label/?id=${s.id}`} target="_blank">Label</a>

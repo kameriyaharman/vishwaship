@@ -21,7 +21,7 @@ export default function PriceList() {
   const zones = ['A', 'B', 'C', 'D', 'E'];
   return (
     <>
-      <PageHead title="Shipment Price List" sub="Rates that apply to your account, before GST"><Link href="/rate-calculator/" className="btn btn-orange">Rate calculator</Link></PageHead>
+      <PageHead title="Shipment Price List" sub="Base rates for your account (before GST) — every quote and booking shows the final amount incl. GST"><Link href="/rate-calculator/" className="btn btn-orange">Rate calculator</Link></PageHead>
       <div className="row" style={{ justifyContent: 'center' }}><div className="seg mb16" style={{ overflowX: 'auto', maxWidth: '100%' }}>{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div></div>
       {tab === 'b2c' && (
         <>

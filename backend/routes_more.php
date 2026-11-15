@@ -237,3 +237,79 @@ route('POST', '/admin/complaints/(\d+)', function ($id) {
     update('complaints', $d, 'id=?', [$id]);
     return ['ok' => true];
 });
+
+// ---------- store connectors ----------
+function channel_out(array $c): array {
+    $k = ch_creds($c);
+    $c['credentials'] = array_map(fn($v) => $v ? '••••' . substr((string) $v, -4) : '', $k);
+    $c['settings'] = ch_settings($c);
+    return $c;
+}
+route('GET', '/me/channels', function () {
+    $u = require_customer();
+    return ['items' => array_map('channel_out', all("SELECT * FROM channels WHERE user_id=? ORDER BY id DESC", [$u['id']])), 'api_key' => !empty($u['api_key'])];
+});
+route('POST', '/me/channels', function () {
+    $u = require_customer();
+    $type = (string) req('type');
+    if (!in_array($type, ['shopify', 'woocommerce', 'custom'], true)) fail('Unknown channel');
+    $url = trim((string) in('store_url', ''));
+    $cred = []; $set = ['auto_import' => 1, 'push_tracking' => 1, 'complete_order' => in('complete_order') ? 1 : 0];
+    if ($type === 'shopify') { $url = shopify_domain($url); if (!preg_match('/^[a-z0-9-]+\.myshopify\.com$/', $url)) fail('Enter your store as yourstore.myshopify.com'); $cred['token'] = trim((string) req('token')); }
+    if ($type === 'woocommerce') { if (!preg_match('#^https://#i', $url)) fail('Enter the store URL starting with https://'); $cred = ['key' => trim((string) req('consumer_key')), 'secret' => trim((string) req('consumer_secret'))]; }
+    if ($type === 'custom') {
+        $hook = trim((string) in('webhook_url', ''));
+        if ($hook !== '' && !preg_match('#^https://#i', $hook)) fail('Webhook URL must start with https://');
+        $set['webhook_url'] = $hook; $cred['webhook_secret'] = bin2hex(random_bytes(16));
+        if (!$u['api_key']) fail('Generate your API key first (API Integration tab)');
+    }
+    $c = ['id' => 0, 'user_id' => $u['id'], 'type' => $type, 'store_url' => $url, 'credentials' => json_encode($cred), 'settings' => json_encode($set), 'imported' => 0];
+    $name = $url ?: 'Custom website';
+    if ($type !== 'custom') { $t = $type === 'shopify' ? shopify_test($c) : woo_test($c); if (!$t['ok']) fail('Could not connect: ' . $t['error']); $name = $t['name']; }
+    if (val("SELECT id FROM channels WHERE user_id=? AND type=? AND store_url=?", [$u['id'], $type, $url])) fail('This store is already connected');
+    $id = insert('channels', ['user_id' => $u['id'], 'type' => $type, 'name' => mb_substr($name, 0, 120), 'store_url' => $url, 'credentials' => json_encode($cred), 'settings' => json_encode($set), 'status' => 'connected']);
+    activity((int) $u['id'], 'Connected ' . ucfirst($type), $name);
+    $c = one("SELECT * FROM channels WHERE id=?", [$id]);
+    $n = 0; if ($type !== 'custom') { try { $n = channel_sync($c); } catch (Throwable $e) { update('channels', ['last_error' => mb_substr($e->getMessage(), 0, 250)], 'id=?', [$id]); } }
+    return channel_out(one("SELECT * FROM channels WHERE id=?", [$id])) + ['imported_now' => $n, 'webhook_secret' => $cred['webhook_secret'] ?? null];
+});
+route('POST', '/me/channels/(\d+)/sync', function ($id) {
+    $u = require_customer();
+    $c = one("SELECT * FROM channels WHERE id=? AND user_id=?", [$id, $u['id']]); if (!$c) fail('Not found', 404);
+    if ($c['type'] === 'custom') fail('Custom websites push orders through the API');
+    try { $n = channel_sync($c); } catch (Throwable $e) { update('channels', ['last_error' => mb_substr($e->getMessage(), 0, 250), 'status' => 'error'], 'id=?', [$id]); fail($e->getMessage()); }
+    return ['imported' => $n];
+});
+route('PUT', '/me/channels/(\d+)', function ($id) {
+    $u = require_customer();
+    $c = one("SELECT * FROM channels WHERE id=? AND user_id=?", [$id, $u['id']]); if (!$c) fail('Not found', 404);
+    $set = ch_settings($c);
+    foreach (['auto_import', 'push_tracking', 'complete_order'] as $k) if (in($k) !== null) $set[$k] = in($k) ? 1 : 0;
+    if (in('webhook_url') !== null) { $h = trim((string) in('webhook_url')); if ($h !== '' && !preg_match('#^https://#i', $h)) fail('Webhook URL must start with https://'); $set['webhook_url'] = $h; }
+    update('channels', ['settings' => json_encode($set)], 'id=?', [$id]);
+    return channel_out(one("SELECT * FROM channels WHERE id=?", [$id]));
+});
+route('DELETE', '/me/channels/(\d+)', function ($id) {
+    $u = require_customer();
+    q("DELETE FROM channels WHERE id=? AND user_id=?", [$id, $u['id']]);
+    return ['ok' => true];
+});
+// custom website / any system: push an order (lands in Drafts). Auth: X-Api-Key
+route('POST', '/me/orders', function () {
+    $u = require_customer();
+    $ext = mb_substr(trim((string) in('order_id', '')), 0, 64);
+    $c = one("SELECT * FROM channels WHERE user_id=? AND type='custom' ORDER BY id LIMIT 1", [$u['id']]);
+    if ($ext && $c && ($dup = val("SELECT id FROM shipments WHERE channel_id=? AND channel_order_id=?", [$c['id'], $ext]))) return ['draft_id' => (int) $dup, 'duplicate' => true];
+    foreach (['to_name' => 'Receiver name', 'to_phone' => 'Receiver mobile', 'to_pincode' => 'Delivery pincode', 'to_address' => 'Address'] as $k => $l) if (trim((string) in($k, '')) === '') fail("$l is required");
+    $pickup = in('pickup_id') ? one("SELECT * FROM pickup_addresses WHERE id=? AND user_id=?", [(int) in('pickup_id'), $u['id']]) : one("SELECT * FROM pickup_addresses WHERE user_id=? ORDER BY is_default DESC, id LIMIT 1", [$u['id']]);
+    if (!$pickup) fail('Add a pickup address in Vishwaship first');
+    $pay = in('payment_mode') === 'cod' ? 'cod' : 'prepaid';
+    $id = insert('shipments', ['user_id' => $u['id'], 'pickup_id' => $pickup['id'], 'order_no' => next_order_no(), 'is_draft' => 1, 'status' => 'draft',
+        'channel_id' => $c['id'] ?? null, 'channel_order_id' => $ext ?: null, 'order_ref' => mb_substr((string) in('order_ref', $ext), 0, 60) ?: null,
+        'from_name' => $pickup['name'], 'from_contact' => $pickup['contact'], 'from_phone' => $pickup['phone'], 'from_address' => $pickup['address'], 'from_city' => $pickup['city'], 'from_state' => $pickup['state'], 'from_pincode' => $pickup['pincode'],
+        'to_name' => mb_substr(trim((string) in('to_name')), 0, 120), 'to_phone' => substr(preg_replace('/\D/', '', (string) in('to_phone')), -10), 'to_address' => mb_substr(trim((string) in('to_address')), 0, 250),
+        'to_city' => in('to_city'), 'to_state' => in('to_state'), 'to_pincode' => substr(preg_replace('/\D/', '', (string) in('to_pincode')), 0, 6),
+        'product' => mb_substr((string) in('product', ''), 0, 190), 'invoice_value' => (float) in('invoice_value', 0), 'payment_mode' => $pay, 'cod_amount' => $pay === 'cod' ? (float) (in('cod_amount') ?: in('invoice_value', 0)) : 0,
+        'weight' => max(0.05, (float) in('weight', 0.5)), 'length' => (float) in('length', 0), 'breadth' => (float) in('breadth', 0), 'height' => (float) in('height', 0), 'service' => 'surface']);
+    return ['draft_id' => $id, 'order_no' => val("SELECT order_no FROM shipments WHERE id=?", [$id])];
+});

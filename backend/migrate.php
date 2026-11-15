@@ -100,7 +100,7 @@ function migrate(): void {
 
     // v7: change requests (documents, KYC docs, COD remittance detail, ticket conversations)
     $addCols = [
-        'shipments' => ['ship_type' => "VARCHAR(5) NOT NULL DEFAULT 'b2c'", 'box_list' => 'TEXT NULL', 'boxes' => 'INT NOT NULL DEFAULT 1', 'hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
+        'shipments' => ['svc_key' => 'VARCHAR(30) NULL', 'first_mile' => 'DECIMAL(10,2) NOT NULL DEFAULT 0', 'other_charges' => 'DECIMAL(10,2) NOT NULL DEFAULT 0', 'ship_type' => "VARCHAR(5) NOT NULL DEFAULT 'b2c'", 'box_list' => 'TEXT NULL', 'boxes' => 'INT NOT NULL DEFAULT 1', 'hsn' => 'VARCHAR(20) NULL', 'order_ref' => 'VARCHAR(60) NULL', 'invoice_file_id' => 'INT NULL', 'ewaybill_no' => 'VARCHAR(30) NULL', 'ewaybill_file_id' => 'INT NULL', 'courier_dims' => 'VARCHAR(40) NULL'],
         'users' => ['account_type' => "VARCHAR(20) NOT NULL DEFAULT 'individual'", 'aadhaar_doc_id' => 'INT NULL', 'pan_doc_id' => 'INT NULL', 'cheque_doc_id' => 'INT NULL', 'gst_doc_id' => 'INT NULL', 'kyc_submitted_at' => 'DATETIME NULL', 'kyc_reviewed_at' => 'DATETIME NULL'],
         'pickup_addresses' => ['sm_warehouse_id' => 'VARCHAR(40) NULL', 'sm_error' => 'VARCHAR(255) NULL', 'b2b_wh_name' => 'VARCHAR(60) NULL', 'b2b_error' => 'VARCHAR(255) NULL'],
         'cod_remittances' => ['ref_no' => 'VARCHAR(30) NULL', 'wallet_used' => 'DECIMAL(12,2) NOT NULL DEFAULT 0', 'amount_paid' => 'DECIMAL(12,2) NULL', 'paid_at' => 'DATETIME NULL'],
@@ -122,6 +122,30 @@ function migrate(): void {
     q("UPDATE cod_remittances SET amount_paid=amount, paid_at=COALESCE(paid_at, CONCAT(remit_date, ' 12:00:00')) WHERE amount_paid IS NULL AND status='paid'");
     $cc = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
     if (is_array($cc) && (($cc['hero_image'] ?? '') === '' || str_contains((string) ($cc['hero_image'] ?? ''), 'images.hostinger.com'))) { $cc['hero_image'] = '/hero.jpg'; set_setting('content', $cc); }
+    // v14: store connectors (Shopify / WooCommerce / custom website)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS channels (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, type VARCHAR(20) NOT NULL, name VARCHAR(120) NULL, store_url VARCHAR(255) NULL,
+        credentials TEXT NULL, settings TEXT NULL, status VARCHAR(20) NOT NULL DEFAULT 'connected', imported INT NOT NULL DEFAULT 0, last_sync DATETIME NULL, last_error VARCHAR(255) NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX(user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if (!val("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND INDEX_NAME='idx_channel_order'")) {
+        foreach (['channel_id' => 'INT NULL', 'channel_order_id' => 'VARCHAR(64) NULL'] as $col => $def)
+            if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND COLUMN_NAME=?", [$col])) $pdo->exec("ALTER TABLE shipments ADD COLUMN $col $def");
+        $pdo->exec("ALTER TABLE shipments ADD INDEX idx_channel_order (channel_id, channel_order_id)");
+    }
+    // v13: per-service pricing (API + % or own rate card), extra charges, rate cards for every service
+    $pdo->exec("CREATE TABLE IF NOT EXISTS service_pricing (service_key VARCHAR(30) PRIMARY KEY, enabled TINYINT NOT NULL DEFAULT 1, mode VARCHAR(8) NOT NULL DEFAULT 'api',
+        markup_pct DECIMAL(6,2) NULL, first_mile DECIMAL(10,2) NOT NULL DEFAULT 0, other_charges DECIMAL(10,2) NOT NULL DEFAULT 0, other_label VARCHAR(60) NOT NULL DEFAULT 'Other charges',
+        min_kg DECIMAL(8,2) NOT NULL DEFAULT 0, updated_at DATETIME NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach (['base_kg' => 'DECIMAL(8,2) NOT NULL DEFAULT 0.5', 'step_kg' => 'DECIMAL(8,2) NOT NULL DEFAULT 0.5'] as $col => $def)
+        if (!val("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='rate_card' AND COLUMN_NAME=?", [$col])) $pdo->exec("ALTER TABLE rate_card ADD COLUMN $col $def");
+    $pdo->exec("ALTER TABLE rate_card MODIFY service VARCHAR(30) NOT NULL");
+    foreach (['shipmozo_b2c', 'shipmozo_b2b', 'delhivery_b2c', 'delhivery_b2b'] as $k) q("INSERT IGNORE INTO service_pricing (service_key) VALUES (?)", [$k]);
+    q("UPDATE service_pricing SET min_kg=20 WHERE service_key IN ('shipmozo_b2b','delhivery_b2b') AND min_kg=0");
+    foreach (['A' => [32, 28], 'B' => [38, 32], 'C' => [42, 38], 'D' => [50, 45], 'E' => [65, 58]] as $z => [$f, $a])
+        q("INSERT IGNORE INTO rate_card (service,zone,first_500,add_500,base_kg,step_kg) VALUES ('sm_b2c',?,?,?,0.5,0.5)", [$z, $f, $a]);
+    foreach (['A' => [360, 14], 'B' => [420, 16], 'C' => [480, 18], 'D' => [560, 22], 'E' => [760, 30]] as $z => [$f, $a]) {
+        q("INSERT IGNORE INTO rate_card (service,zone,first_500,add_500,base_kg,step_kg) VALUES ('sm_b2b',?,?,?,20,1)", [$z, $f, $a]);
+        q("INSERT IGNORE INTO rate_card (service,zone,first_500,add_500,base_kg,step_kg) VALUES ('dlv_b2b',?,?,?,20,1)", [$z, $f, $a]);
+    }
     // v12: To Pay (FOD) payment mode; B2B Shipmozo package type; carriers registry
     if (val("SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='shipments' AND COLUMN_NAME='payment_mode'") === 'enum')
         $pdo->exec("ALTER TABLE shipments MODIFY payment_mode VARCHAR(10) NOT NULL DEFAULT 'prepaid'");

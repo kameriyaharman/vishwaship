@@ -36,6 +36,8 @@ const P = {
   arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
   copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4H4v12h4" /></>,
   bolt: <><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" /></>,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 7l9 6 9-6" /></>,
+  chat: <><path d="M4 5h16v11H8l-4 4V5z" /></>,
   phone: <><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z" /></>,
   user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></>,
   building: <><path d="M4 21V8l8-5 8 5v13" /><path d="M9 21v-6h6v6M9 11h1M14 11h1" /></>,

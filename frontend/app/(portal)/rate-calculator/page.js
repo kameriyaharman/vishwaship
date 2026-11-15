@@ -15,7 +15,7 @@ export default function RateCalculatorPage() {
         <div className="card">
           <div className="card-h"><h3>Zones</h3></div>
           {zones.map(([z, l]) => <div key={z} className="kv"><span>Zone {z}</span><b>{l}</b></div>)}
-          <p className="tiny muted mt12">Chargeable weight = higher of actual and volumetric (L×B×H ÷ {cfg?.vol_divisor || 5000}), rounded up to 500 g slabs. GST {cfg?.gst_pct || 18}% extra. COD charges apply on COD shipments.</p>
+          <p className="tiny muted mt12">Chargeable weight = higher of actual and volumetric (L×B×H ÷ {cfg?.vol_divisor || 5000}), rounded up to 500 g slabs. Prices shown are final and include GST {cfg?.gst_pct || 18}% — tap Breakdown to see shipping, first-mile, other charges and GST.</p>
         </div>
       </div>
     </>

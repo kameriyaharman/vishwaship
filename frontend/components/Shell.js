@@ -23,7 +23,7 @@ const ADMIN_NAV = [
   ['MANAGE', [['Customers', '/admin/customers', 'users', 'customers'], ['All Shipments', '/admin/shipments', 'box', 'shipments'], ['Weight Disputes', '/admin/disputes', 'weight', 'disputes'], ['NDR / RTO', '/admin/ndr', 'undo', 'ndr']]],
   ['PRICING', [['Rates & Commission', '/admin/rates', 'percent', 'rates']]],
   ['MONEY', [['Wallet & COD', '/admin/wallet', 'wallet', 'wallet'], ['Reports', '/admin/reports', 'chart', 'reports']]],
-  ['SYSTEM', [['Courier APIs', '/admin/delhivery', 'code', 'delhivery'], ['Staff & Roles', '/admin/staff', 'lock', 'staff'], ['Website Content', '/admin/content', 'globe', 'content'], ['Support Tickets', '/admin/tickets', 'receipt', 'support'], ['Complaints & Enquiries', '/admin/support', 'help', 'support']]],
+  ['SYSTEM', [['Courier APIs', '/admin/delhivery', 'code', 'delhivery'], ['Integrations & Keys', '/admin/integrations', 'link', 'content'], ['Staff & Roles', '/admin/staff', 'lock', 'staff'], ['Website Content', '/admin/content', 'globe', 'content'], ['Support Tickets', '/admin/tickets', 'receipt', 'support'], ['Complaints & Enquiries', '/admin/support', 'help', 'support']]],
 ];
 
 export default function Shell({ admin = false, children }) {

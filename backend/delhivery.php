@@ -106,6 +106,9 @@ function apply_status(array $s, string $new, string $label, string $location = '
     if ($new === 'ndr') { $upd['ndr_attempts'] = (int)$s['ndr_attempts'] + 1; $upd['ndr_reason'] = $remark ?: ($s['ndr_reason'] ?: 'Delivery attempt failed'); $upd['ndr_action'] = null; }
     update('shipments', $upd, 'id=?', [$s['id']]);
     add_event((int)$s['id'], $new, $label ?: (STATUS_LABEL[$new] ?? $new), $location, $remark, $time);
+    if ($s['status'] !== $new && in_array($new, ['picked_up', 'out_for_delivery', 'delivered', 'ndr', 'rto_in_transit'], true))
+        notify_shipment(array_merge($s, $upd, ['ndr_reason' => $upd['ndr_reason'] ?? ($s['ndr_reason'] ?? '')]), $new);
+    if ($s['status'] !== $new) channel_webhooks($s, $new);
     if (in_array($new, ['rto_in_transit', 'rto_delivered']) && !$s['rto_charged']) {
         $amt = round($s['freight'] * (float) setting('rto_pct', 100) / 100, 2);
         if ($amt > 0) {

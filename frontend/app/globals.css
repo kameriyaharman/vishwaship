@@ -534,3 +534,18 @@ a.stat-link:active { transform: scale(.98); }
 .boxgrid .field label { font-size: 12px; }
 @media (max-width: 520px) { .boxgrid { grid-template-columns: 1fr 1fr 1fr 56px; gap: 6px; } .boxgrid .input { padding: 0 8px; } }
 .mo-pay.topay, .chip.c-topay { background: #e6efff; color: #2453d6; }
+/* ===== quoted rate rows (logo + GST-inclusive) ===== */
+.ropt { border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; background: #fff; cursor: pointer; margin-bottom: 10px; transition: .12s; }
+.ropt.on { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(11,31,58,.06); }
+.ropt-row { display: flex; align-items: center; gap: 12px; }
+.ropt .radio { flex-shrink: 0; }
+.clogo { flex-shrink: 0; display: grid; place-items: center; background: #fff; border: 1px solid var(--line-2); border-radius: 10px; padding: 4px 6px; }
+.clogo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.clogo b { color: var(--navy); font-size: 14px; }
+.ropt-mid { flex: 1; min-width: 0; }
+.ropt-mid .b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ropt-price { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.ropt-price b { font-size: 18px; color: var(--navy); }
+.bkd { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.bkd .kv.tot { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 8px; font-size: 15px; }
+@media (max-width: 520px) { .ropt { padding: 10px 11px; } .ropt-row { gap: 9px; } .clogo { width: 58px !important; height: 36px !important; } .ropt-price b { font-size: 16px; } }

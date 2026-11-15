@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import Icon from '@/components/Icon';
 import { Spinner, ErrorBox, Modal, AsyncBtn, toast, useLoad, PageHead } from '@/components/ui';
 import { api, inr } from '@/lib/api';
+import { Chip } from '@/components/ui';
+import { CourierLogo } from '@/components/RateOption';
 
 const ceilR = (v, mode) => mode === 'none' ? Math.round(v * 100) / 100 : mode === 'nearest1' ? Math.round(v) : Math.ceil(Math.round(v * 100) / 100);
 
@@ -26,9 +28,11 @@ export default function Rates() {
 
   return (
     <>
-      <PageHead title="Rates & Commission" sub="Courier API price (Delhivery / Shipmozo) + your commission % = final rate the customer sees before booking">
+      <PageHead title="Services, Rate Cards & Commission" sub="Price each service from the courier API + commission %, or from your own rate card. Customers see the final amount incl. GST.">
         <AsyncBtn onClick={save}>Save changes</AsyncBtn>
       </PageHead>
+      <ServicesPricing />
+      <h2 className="mt24 mb12" style={{ fontSize: 18 }}>Commission & COD rules</h2>
       <div className="split-1-2" style={{ gridTemplateColumns: '1fr 1.55fr' }}>
         <div className="col" style={{ gap: 14 }}>
           <div className="card" style={{ border: '2px solid var(--orange)' }}>
@@ -129,5 +133,86 @@ export default function Rates() {
         </Modal>
       )}
     </>
+  );
+}
+
+function ServicesPricing() {
+  const { data: d, err, reload } = useLoad(() => api('/admin/services'), []);
+  const [open, setOpen] = useState(null);
+  if (err) return <ErrorBox err={err} onRetry={reload} />;
+  if (!d) return <Spinner />;
+  return (
+    <div className="card mb16">
+      <div className="card-h"><h3><Icon name="truck" />Services &amp; pricing</h3><span className="tiny muted">GST {d.gst_pct}% is added on top and shown included to customers</span></div>
+      <div className="tbl-wrap"><table className="tbl">
+        <thead><tr><th>Service</th><th>Type</th><th>API</th><th>Pricing</th><th className="num">Commission</th><th className="num">First mile</th><th className="num">Other</th><th>Status</th><th /></tr></thead>
+        <tbody>{d.items.map((s) => (
+          <tr key={s.key}>
+            <td><span className="row" style={{ gap: 8 }}>{!s.builtin && <CourierLogo o={{ logo: s.logo, carrier: s.label }} size={26} />}<b>{s.label}</b></span></td>
+            <td>{(s.kind || '').toUpperCase()}</td>
+            <td>{s.builtin ? <Chip s={s.connected ? 'connected' : 'pending'} label={s.connected ? 'Connected' : 'Not connected'} /> : <span className="tiny muted">Manual (admin enters AWB)</span>}</td>
+            <td>{s.pricing.mode === 'card' ? 'Own rate card' : 'API + commission'}</td>
+            <td className="num">{s.pricing.mode === 'card' ? '—' : s.pricing.markup_pct === null ? `Global ${d.global_markup}%` : `${s.pricing.markup_pct}%`}</td>
+            <td className="num">{inr(s.pricing.first_mile)}</td><td className="num">{inr(s.pricing.other_charges)}</td>
+            <td><Chip s={s.pricing.enabled && (s.builtin || s.connected) ? 'delivered' : 'cancelled'} label={s.pricing.enabled && (s.builtin || s.connected) ? 'On' : 'Off'} /></td>
+            <td><button className="btn btn-outline btn-sm" onClick={() => setOpen(s)}>Edit</button></td>
+          </tr>
+        ))}</tbody>
+      </table></div>
+      <p className="tiny muted mt8">Customer-specific commission (set at KYC approval) overrides the service commission. Add more carriers in Courier APIs → Add carrier; they appear here with their own rate card.</p>
+      {open && <ServiceEdit s={open} zones={d.zones} topay={d.topay_fee} onClose={() => setOpen(null)} onDone={() => { setOpen(null); reload(); }} />}
+    </div>
+  );
+}
+
+function ServiceEdit({ s, zones, topay, onClose, onDone }) {
+  const [p, setP] = useState({ ...s.pricing, markup_pct: s.pricing.markup_pct ?? '' });
+  const [rates, setRates] = useState(s.rates);
+  const [tp, setTp] = useState(topay);
+  const [card, setCard] = useState(Object.keys(s.cards)[0]);
+  const setR = (ck, z, k, v) => setRates({ ...rates, [ck]: rates[ck].map((r) => (r.zone === z ? { ...r, [k]: v } : r)) });
+  const setV = (k) => (e) => setP({ ...p, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  const save = async () => {
+    try {
+      await api('/admin/services/' + s.key, { method: 'PUT', body: { pricing: { ...p, enabled: p.enabled ? 1 : 0 }, rates, topay_fee: s.kind?.includes('b2b') ? tp : undefined, carrier_enabled: s.builtin ? undefined : !!p.enabled } });
+      toast(s.label + ' saved'); onDone();
+    } catch (e) { toast(e.message, true); }
+  };
+  const isCard = p.mode === 'card' || !s.builtin;
+  return (
+    <Modal title={'Pricing — ' + s.label} onClose={onClose} wide>
+      <label className="check mb12"><input type="checkbox" checked={!!+p.enabled || p.enabled === true} onChange={setV('enabled')} /> <b>Show this service to customers</b></label>
+      {s.builtin && (
+        <div className="seg2 mb12">
+          {[['api', 'API rate + commission %', 'Live courier price + your margin'], ['card', 'My rate card', 'Your fixed price by zone & weight']].map(([k, l, dd]) => (
+            <button type="button" key={k} className={p.mode === k ? 'on' : ''} onClick={() => setP({ ...p, mode: k })}><b>{l}</b><span>{dd}</span></button>
+          ))}
+        </div>
+      )}
+      <div className="grid3">
+        {!isCard && <div className="field"><label>Commission % <span className="muted">(blank = global)</span></label><input className="input" type="number" min="0" value={p.markup_pct} onChange={setV('markup_pct')} /></div>}
+        <div className="field"><label>First-mile charge (₹ / shipment)</label><input className="input" type="number" min="0" value={p.first_mile} onChange={setV('first_mile')} /></div>
+        <div className="field"><label>Other charge (₹ / shipment)</label><input className="input" type="number" min="0" value={p.other_charges} onChange={setV('other_charges')} /></div>
+        <div className="field"><label>Other charge label</label><input className="input" value={p.other_label} onChange={setV('other_label')} placeholder="Fuel surcharge / Handling" /></div>
+        <div className="field"><label>Minimum chargeable weight (kg)</label><input className="input" type="number" min="0" value={p.min_kg} onChange={setV('min_kg')} /></div>
+        {s.kind?.includes('b2b') && <div className="field"><label>To Pay (FOD) booking fee ₹ <span className="muted">(all B2B)</span></label><input className="input" type="number" min="0" value={tp} onChange={(e) => setTp(e.target.value)} /></div>}
+      </div>
+      {isCard && (
+        <>
+          <div className="row between mt16 mb8"><b>Rate card</b>{Object.keys(s.cards).length > 1 && <select className="select" style={{ width: 'auto' }} value={card} onChange={(e) => setCard(e.target.value)}>{Object.entries(s.cards).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>}</div>
+          <div className="tbl-wrap"><table className="tbl">
+            <thead><tr><th>Zone</th><th className="num">Base weight (kg)</th><th className="num">Base price ₹</th><th className="num">Every additional (kg)</th><th className="num">Additional price ₹</th></tr></thead>
+            <tbody>{(rates[card] || []).map((r) => (
+              <tr key={r.zone}><td><b>{r.zone}</b> <span className="tiny muted">{zones[r.zone]}</span></td>
+                {['base_kg', 'first_500', 'step_kg', 'add_500'].map((k) => <td key={k} className="num"><input className="input" style={{ width: 92, textAlign: 'right' }} type="number" min="0" step="0.01" value={r[k]} onChange={(e) => setR(card, r.zone, k, e.target.value)} /></td>)}
+              </tr>
+            ))}</tbody>
+          </table></div>
+          <p className="tiny muted mt8">Price before GST. Example: base 0.5 kg = ₹40, every additional 0.5 kg = ₹35 → a 1.2 kg parcel = ₹40 + 2 × ₹35 = ₹110 + GST. For B2B use base 20 kg and additional per 1 kg.</p>
+        </>
+      )}
+      {!s.builtin && <p className="tiny muted">Bookings on this carrier get a Vishwaship reference; enter the courier's AWB from Admin → Shipments → shipment page.</p>}
+      <div className="row mt16" style={{ justifyContent: 'flex-end' }}><AsyncBtn onClick={save}>Save</AsyncBtn></div>
+    </Modal>
   );
 }

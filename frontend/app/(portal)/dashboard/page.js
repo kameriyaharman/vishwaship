@@ -68,7 +68,7 @@ export default function Dashboard() {
                     {d.recent.map((s) => (
                       <tr key={s.id} className="click" onClick={() => (location.href = '/shipment/?id=' + s.id)}>
                         <td className="mono">{s.awb}</td><td className="hide-sm">{s.from_city} {s.from_pincode}</td><td>{s.to_city} {s.to_pincode}</td>
-                        <td className="hide-sm">{kg(s.chargeable_weight)}</td><td><Chip s={s.status_key} label={s.status_label} /></td><td className="num">{inr(+s.freight + +s.cod_charge)}</td>
+                        <td className="hide-sm">{kg(s.chargeable_weight)}</td><td><Chip s={s.status_key} label={s.status_label} /></td><td className="num">{inr(s.total)}</td>
                       </tr>
                     ))}
                     {!d.recent.length && <tr><td colSpan={6} className="empty">No shipments yet. <Link href="/book/" className="link">Book your first shipment →</Link></td></tr>}

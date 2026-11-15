@@ -135,15 +135,11 @@ export default function Content() {
             <div className="field"><label>Pickup slots (one per line)</label><textarea className="textarea" value={g.pickup_slots} onChange={(e) => setG({ ...g, pickup_slots: e.target.value })} /></div>
           </div>
           <div className="card col" style={{ alignSelf: 'start' }}><h3 style={{ fontSize: 15 }}>Wallet payments</h3>
-            <div className="field"><label>Payment gateway</label><select className="select" value={g.payment_gateway} onChange={(e) => setG({ ...g, payment_gateway: e.target.value })}><option value="test">Test mode (credit instantly — for testing only)</option><option value="razorpay">Razorpay (live)</option></select></div>
-            {G('razorpay_key_id', 'Razorpay Key ID')}
-            <div className="field"><label>Razorpay Key Secret {g.razorpay_secret_set && <span className="green tiny">(saved)</span>}</label><input className="input" type="password" placeholder={g.razorpay_secret_set ? '•••••••• (leave blank to keep)' : ''} value={g.razorpay_key_secret} onChange={(e) => setG({ ...g, razorpay_key_secret: e.target.value })} /></div>
-            <p className="tiny muted">Get keys from Razorpay Dashboard → Settings → API Keys. Customers pay by UPI / card / netbanking and the wallet is credited automatically after payment verification.</p>
+            <div className="note small">Razorpay, email (Resend), SMS (Way2SMS) and WhatsApp (WATI) keys are now in <a className="link" href="/admin/integrations/">Admin → Integrations &amp; Keys</a>.</div>
             <h3 style={{ fontSize: 15 }} className="mt12">Early COD</h3>
             <div className="grid2">{G('early_cod_fee_pct', 'Fee % of COD', 'number')}{G('early_cod_cycle', 'Early cycle text')}</div>
             <h3 style={{ fontSize: 15 }} className="mt12">Buyer notifications</h3>
-            <div className="grid2">{G('notif_credit_price', 'Price per credit (₹)', 'number')}{G('notif_provider_name', 'SMS / WhatsApp provider')}</div>
-            <label className="check"><input type="checkbox" checked={g.notif_provider_enabled === '1'} onChange={(e) => setG({ ...g, notif_provider_enabled: e.target.checked ? '1' : '0' })} /> Sending is live (provider connected)</label>
+            <div className="grid2">{G('notif_credit_price', 'Price per credit (₹)', 'number')}</div>
             <label className="check"><input type="checkbox" checked={g.cod_confirm_enabled === '1'} onChange={(e) => setG({ ...g, cod_confirm_enabled: e.target.checked ? '1' : '0' })} /> COD confirmation via WhatsApp is live</label>
           </div>
         </div>

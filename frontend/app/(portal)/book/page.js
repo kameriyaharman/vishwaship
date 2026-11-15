@@ -7,6 +7,7 @@ import ShippingLabel from '@/components/Label';
 import { Spinner, toast, Modal } from '@/components/ui';
 import { api, inr, kg, qp, today, dLong, uploadFile } from '@/lib/api';
 import { useConfig } from '@/lib/config';
+import RateOption, { Breakdown } from '@/components/RateOption';
 
 const EMPTY = { to_name: '', to_phone: '', to_pincode: '', to_city: '', to_state: '', to_address: '', product: '', invoice_value: '', hsn: '', order_ref: '', invoice_file_id: '', ewaybill_no: '', ewaybill_file_id: '', payment_mode: 'prepaid', cod_amount: '', weight: '', boxes: '1', length: '', breadth: '', height: '', service: 'surface', ship_type: 'b2c' };
 const NEWBOX = { l: '', b: '', h: '', n: '1' };
@@ -239,18 +240,13 @@ export default function Book() {
               {!quote ? <p className="muted small">Enter weight to see the final rate.</p> : (
                 <>
                   {quote.options.map((o) => (
-                    <div key={o.service} className={'opt' + (f.service === o.service ? ' on' : '')} onClick={() => { setManualSvc(true); setF({ ...f, service: o.service }); }}>
-                      <span className="radio" /><div><div className="b">{o.name}</div><div className="tiny muted">{o.days} · ETA {dLong(o.eta).slice(4, 10)}</div></div>
-                      <span className="price">{o.to_pay ? <span style={{ textAlign: 'right', display: 'block' }}>{inr(o.receiver_pays)}<span className="tiny muted" style={{ display: 'block', fontWeight: 500 }}>paid by receiver</span></span> : inr(o.freight + o.cod_charge)}</span>
-                    </div>
+                    <RateOption key={o.service} o={o} selected={f.service === o.service} chargeable={quote.chargeable_weight} showBreakdown="toggle" eta={dLong(o.eta).slice(4, 10)}
+                      onSelect={() => { setManualSvc(true); setF({ ...f, service: o.service }); }} />
                   ))}
                   {opt && (
                     <div className="mt12">
-                      {opt.to_pay && <div className="note mb8 small">To Pay (FOD): the courier collects about <b>{inr(opt.receiver_pays, 2)}</b> freight from the receiver at delivery. You pay only the booking fee below.</div>}
-                      <div className="kv"><span>{opt.to_pay ? 'Booking fee' : `Freight (${opt.name}, ${kg(quote.chargeable_weight)})`}</span><b>{inr(opt.freight, 2)}</b></div>
-                      <div className="kv"><span>COD charges</span><b>{opt.cod_charge ? inr(opt.cod_charge, 2) : '—'}</b></div>
-                      <div className="kv"><span>GST {quote.gst_pct}%</span><b>{inr(opt.gst, 2)}</b></div>
-                      <div className="row between mt12"><b style={{ fontSize: 20 }}>Total payable</b><b style={{ fontSize: 22 }}>{inr(opt.total, 2)}</b></div>
+                      <div className="b small mb8">{opt.name} — charges</div>
+                      <Breakdown o={opt} chargeable={quote.chargeable_weight} />
                       <div className="tiny muted">Deducted from wallet · balance after booking {inr(+me.wallet_balance - opt.total, 2)}</div>
                       {+me.wallet_balance + +me.credit_limit < opt.total && <div className="err mt8">Insufficient balance. <Link href="/wallet/" className="link">Recharge wallet →</Link></div>}
                     </div>

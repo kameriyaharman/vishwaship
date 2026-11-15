@@ -120,7 +120,10 @@ route('PUT', '/admin/customers/(\d+)', function ($id) {
     require_admin('customers');
     $d = customer_payload(false);
     if (isset($d['email']) && val("SELECT id FROM users WHERE email=? AND id<>?", [$d['email'], $id])) fail('Email already used by another account');
+    $before = (string) val("SELECT kyc_status FROM users WHERE id=?", [$id]);
     update('users', $d, "id=? AND role='customer'", [$id]);
+    if (isset($d['kyc_status']) && $d['kyc_status'] !== $before && in_array($d['kyc_status'], ['verified', 'rejected'], true))
+        notify_user((int) $id, 'kyc_update', ['status' => $d['kyc_status'] === 'verified' ? 'approved' : 'not approved', 'message' => $d['kyc_status'] === 'verified' ? 'You can now book shipments.' : (string) ($d['kyc_note'] ?? 'Please re-upload your documents.')]);
     return public_user(one("SELECT * FROM users WHERE id=?", [$id]));
 });
 route('DELETE', '/admin/customers/(\d+)', function ($id) {
@@ -472,7 +475,7 @@ route('PUT', '/admin/content', function () {
     return ['ok' => true];
 });
 const GENERAL_KEYS = ['company_name', 'company_gstin', 'company_address', 'company_city', 'company_state', 'company_pincode', 'company_phone', 'invoice_prefix', 'require_kyc', 'min_recharge', 'low_wallet_threshold', 'pickup_slots',
-    'payment_gateway', 'razorpay_key_id', 'gst_pct', 'early_cod_fee_pct', 'early_cod_cycle', 'notif_credit_price', 'notif_provider_enabled', 'notif_provider_name', 'cod_confirm_enabled'];
+    'gst_pct', 'early_cod_fee_pct', 'early_cod_cycle', 'notif_credit_price', 'notif_provider_enabled', 'notif_provider_name', 'cod_confirm_enabled'];
 route('GET', '/admin/settings', function () {
     require_admin('content');
     $s = array_intersect_key(settings(), array_flip(GENERAL_KEYS));
@@ -482,7 +485,6 @@ route('GET', '/admin/settings', function () {
 route('PUT', '/admin/settings', function () {
     require_admin('content');
     foreach (body() as $k => $v) if (in_array($k, GENERAL_KEYS)) set_setting($k, $v);
-    if (in('razorpay_key_secret')) set_setting('razorpay_key_secret', trim((string) in('razorpay_key_secret')));
     return ['ok' => true];
 });
 
@@ -611,4 +613,125 @@ route('POST', '/admin/carriers/(\d+)/test', function ($id) {
     $msg = $err ? 'Not reachable: ' . $err : 'API server reachable (HTTP ' . $code . ')';
     update('carriers', ['last_test' => date('d M H:i') . ' · ' . $msg, 'status' => $err ? $c['status'] : ($c['status'] === 'pending' ? 'credentials_saved' : $c['status'])], 'id=?', [$id]);
     return ['ok' => !$err, 'message' => $msg . ($err ? '' : ' — credentials saved; booking goes live once this carrier\'s connector is enabled.')];
+});
+
+// ---------- services & rate cards (per-service pricing) ----------
+function services_for_admin(): array {
+    $list = [];
+    foreach (svc_catalog() as $k => $c) $list[] = ['key' => $k, 'label' => $c['label'], 'kind' => $c['kind'], 'cards' => $c['cards'], 'builtin' => true,
+        'connected' => match ($k) { 'shipmozo_b2c', 'shipmozo_b2b' => shipmozo_on(), 'delhivery_b2c' => delhivery_live(), 'delhivery_b2b' => b2b_on(), default => false }];
+    foreach (all("SELECT * FROM carriers ORDER BY name") as $c)
+        $list[] = ['key' => 'carrier_' . $c['id'], 'label' => $c['name'], 'kind' => strtolower((string) $c['modes']), 'cards' => ['c' . $c['id'] => $c['name']], 'builtin' => false,
+            'connected' => (bool) $c['enabled'], 'carrier_id' => (int) $c['id'], 'logo' => courier_logo($c['name'], $c['logo_file_id'] ? (int) $c['logo_file_id'] : null)];
+    foreach ($list as &$s) {
+        $s['pricing'] = svc_pricing($s['key']);
+        if (!$s['builtin']) $s['pricing']['mode'] = 'card';
+        $s['rates'] = [];
+        foreach (array_keys($s['cards']) as $ck) {
+            $rows = []; foreach (all("SELECT zone, first_500, add_500, base_kg, step_kg FROM rate_card WHERE service=?", [$ck]) as $r) $rows[$r['zone']] = $r;
+            foreach (array_keys(ZONE_LABEL) as $z) $rows[$z] = $rows[$z] ?? ['zone' => $z, 'first_500' => 0, 'add_500' => 0, 'base_kg' => $s['kind'] === 'b2b' ? 20 : 0.5, 'step_kg' => $s['kind'] === 'b2b' ? 1 : 0.5];
+            $s['rates'][$ck] = array_values($rows);
+        }
+    }
+    return $list;
+}
+route('GET', '/admin/services', function () {
+    require_admin('rates');
+    return ['items' => services_for_admin(), 'zones' => ZONE_LABEL, 'global_markup' => (float) setting('global_markup', 20), 'gst_pct' => (float) setting('gst_pct', 18), 'topay_fee' => (float) setting('topay_fee', 0)];
+});
+route('PUT', '/admin/services/([a-z0-9_]+)', function ($key) {
+    require_admin('rates');
+    $valid = array_column(services_for_admin(), null, 'key');
+    if (!isset($valid[$key])) fail('Unknown service', 404);
+    $p = (array) in('pricing', []);
+    $mode = ($p['mode'] ?? 'api') === 'card' || !$valid[$key]['builtin'] ? 'card' : 'api';
+    $mk = ($p['markup_pct'] ?? '') === '' || $p['markup_pct'] === null ? null : max(0, min(500, (float) $p['markup_pct']));
+    q("INSERT INTO service_pricing (service_key, enabled, mode, markup_pct, first_mile, other_charges, other_label, min_kg, updated_at) VALUES (?,?,?,?,?,?,?,?,NOW())
+       ON DUPLICATE KEY UPDATE enabled=VALUES(enabled), mode=VALUES(mode), markup_pct=VALUES(markup_pct), first_mile=VALUES(first_mile), other_charges=VALUES(other_charges),
+       other_label=VALUES(other_label), min_kg=VALUES(min_kg), updated_at=NOW()",
+        [$key, !empty($p['enabled']) ? 1 : 0, $mode, $mk, max(0, (float) ($p['first_mile'] ?? 0)), max(0, (float) ($p['other_charges'] ?? 0)),
+         mb_substr(trim((string) ($p['other_label'] ?? '')) ?: 'Other charges', 0, 60), max(0, (float) ($p['min_kg'] ?? 0))]);
+    foreach ((array) in('rates', []) as $ck => $rows) {
+        if (!isset($valid[$key]['cards'][$ck])) continue;
+        foreach ((array) $rows as $r) {
+            $z = strtoupper((string) ($r['zone'] ?? '')); if (!isset(ZONE_LABEL[$z])) continue;
+            q("INSERT INTO rate_card (service, zone, first_500, add_500, base_kg, step_kg) VALUES (?,?,?,?,?,?)
+               ON DUPLICATE KEY UPDATE first_500=VALUES(first_500), add_500=VALUES(add_500), base_kg=VALUES(base_kg), step_kg=VALUES(step_kg)",
+                [$ck, $z, max(0, (float) $r['first_500']), max(0, (float) $r['add_500']), max(0.1, (float) ($r['base_kg'] ?? 0.5)), max(0.1, (float) ($r['step_kg'] ?? 0.5))]);
+        }
+    }
+    if (!$valid[$key]['builtin'] && in('carrier_enabled') !== null) update('carriers', ['enabled' => in('carrier_enabled') ? 1 : 0, 'status' => in('carrier_enabled') ? 'live' : 'pending'], 'id=?', [$valid[$key]['carrier_id']]);
+    if (in('topay_fee') !== null) set_setting('topay_fee', (string) max(0, (float) in('topay_fee')));
+    return ['ok' => true];
+});
+// admin enters the real courier AWB for bookings made on a manually-managed carrier
+route('PUT', '/admin/shipments/(\d+)/courier-awb', function ($id) {
+    require_admin('shipments');
+    $s = one("SELECT * FROM shipments WHERE id=?", [$id]); if (!$s) fail('Not found', 404);
+    $awb = preg_replace('/[^A-Za-z0-9-]/', '', (string) req('awb'));
+    if (strlen($awb) < 5) fail('Enter the courier AWB');
+    if (val("SELECT id FROM shipments WHERE awb=? AND id<>?", [$awb, $id])) fail('This AWB is already used by another shipment');
+    q("UPDATE wallet_txns SET ref=?, description=REPLACE(description, ?, ?) WHERE ref=?", [$awb, $s['awb'], $awb, $s['awb']]);
+    update('shipments', ['awb' => $awb, 'courier_name' => in('courier_name') ?: $s['courier_name']], 'id=?', [$id]);
+    add_event((int) $id, $s['status'], 'Courier AWB updated · ' . $awb, (string) (in('courier_name') ?: $s['courier_name']));
+    return ['ok' => true, 'awb' => $awb];
+});
+
+// ---------- Integrations & API keys (payments, notifications) ----------
+const INTEG_PLAIN = ['payment_gateway', 'razorpay_key_id', 'email_enabled', 'resend_from', 'email_reply_to', 'sms_enabled', 'way2sms_url', 'way2sms_sender_id', 'way2sms_usetype',
+    'way2sms_dlt_entity_id', 'wa_enabled', 'wati_endpoint', 'site_url'];
+const INTEG_SECRET = ['razorpay_key_secret', 'razorpay_webhook_secret', 'resend_api_key', 'way2sms_api_key', 'way2sms_secret', 'wati_token'];
+route('GET', '/admin/integrations', function () {
+    require_admin('content');
+    $o = [];
+    foreach (INTEG_PLAIN as $k) $o[$k] = setting($k, match ($k) { 'payment_gateway' => 'test', 'way2sms_url' => 'https://www.way2sms.com/api/v1/sendCampaign', 'way2sms_usetype' => 'prod', 'resend_from' => 'Vishwaship <noreply@vishwaship.com>', default => '' });
+    foreach (INTEG_SECRET as $k) { $v = setting($k, ''); $o[$k . '_set'] = $v !== ''; $o[$k . '_hint'] = $v !== '' ? '••••' . substr($v, -4) : ''; }
+    $o['events'] = notif_config(); $o['event_labels'] = NOTIFY_EVENTS; $o['buyer_events'] = BUYER_EVENTS;
+    $base = rtrim(setting('site_url', ''), '/') ?: ('https://' . ($_SERVER['HTTP_HOST'] ?? 'vishwaship.com'));
+    $o['razorpay_webhook_url'] = $base . '/api/payments/razorpay/webhook';
+    return $o;
+});
+route('PUT', '/admin/integrations', function () {
+    require_admin('content');
+    foreach (INTEG_PLAIN as $k) if (in($k) !== null) { $v = in($k); set_setting($k, is_bool($v) ? ($v ? '1' : '0') : trim((string) $v)); }
+    foreach (INTEG_SECRET as $k) { $v = in($k); if (is_string($v) && trim($v) !== '' && !str_contains($v, '••••')) set_setting($k, trim($v)); if (in($k . '_clear')) set_setting($k, ''); }
+    if (in('events') !== null) {
+        $ev = [];
+        foreach ((array) in('events') as $k => $e) {
+            if (!isset(NOTIFY_EVENTS[$k])) continue;
+            $ev[$k] = ['email' => !empty($e['email']) ? 1 : 0, 'sms' => !empty($e['sms']) ? 1 : 0, 'wa' => !empty($e['wa']) ? 1 : 0,
+                'subject' => mb_substr((string) ($e['subject'] ?? ''), 0, 150), 'text' => mb_substr((string) ($e['text'] ?? ''), 0, 600),
+                'dlt_id' => preg_replace('/\D/', '', (string) ($e['dlt_id'] ?? '')), 'wa_template' => preg_replace('/[^a-z0-9_]/i', '', (string) ($e['wa_template'] ?? ''))];
+        }
+        set_setting('notif_events', json_encode($ev));
+    }
+    if (setting('payment_gateway') === 'razorpay' && (setting('razorpay_key_id') === '' || setting('razorpay_key_secret') === '')) set_setting('payment_gateway', 'test');
+    set_setting('notif_provider_enabled', (setting('sms_enabled') === '1' || setting('wa_enabled') === '1') ? '1' : '0');
+    set_setting('notif_provider_name', implode(' + ', array_filter([setting('wa_enabled') === '1' ? 'WATI WhatsApp' : '', setting('sms_enabled') === '1' ? 'Way2SMS' : ''])));
+    return ['ok' => true];
+});
+route('POST', '/admin/integrations/test/(razorpay|email|sms|whatsapp)', function ($p) {
+    $me = require_admin('content');
+    $to = trim((string) in('to', ''));
+    switch ($p) {
+        case 'razorpay':
+            if (setting('razorpay_key_id') === '' || setting('razorpay_key_secret') === '') fail('Enter Razorpay Key ID and Key Secret first');
+            $r = razorpay_call('GET', '/orders?count=1');
+            if (!is_array($r) || isset($r['error'])) fail('Razorpay rejected the keys: ' . ($r['error']['description'] ?? 'no response'));
+            return ['ok' => true, 'message' => 'Razorpay keys are valid' . (str_starts_with(setting('razorpay_key_id'), 'rzp_test_') ? ' (TEST keys — use rzp_live_ keys to take real payments)' : ' (LIVE)')];
+        case 'email':
+            $r = send_email($to ?: (string) $me['email'], 'Vishwaship test email', "This is a test email from Vishwaship admin.\nResend is connected.");
+            break;
+        case 'sms':
+            if (!$to) fail('Enter a mobile number');
+            $c = notif_config()['booked'];
+            $r = send_sms($to, notif_fill($c['text'], ['name' => 'Test', 'order_no' => 'VS-TEST', 'seller' => 'Vishwaship', 'courier' => 'Delhivery', 'awb' => 'TEST123', 'track_url' => 'https://vishwaship.com/track/']), (string) $c['dlt_id']);
+            break;
+        default:
+            if (!$to) fail('Enter a WhatsApp number');
+            $c = notif_config()['booked'];
+            $r = send_whatsapp($to, (string) ($c['wa_template'] ?: in('template', '')), ['name' => 'Test', 'awb' => 'TEST123', 'order_no' => 'VS-TEST', 'courier' => 'Delhivery', 'seller' => 'Vishwaship', 'track_url' => 'https://vishwaship.com/track/']);
+    }
+    if (!$r['ok']) fail(ucfirst($p) . ' test failed: ' . $r['error']);
+    return ['ok' => true, 'message' => ucfirst($p) . ' test sent'];
 });

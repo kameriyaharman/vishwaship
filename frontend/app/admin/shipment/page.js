@@ -24,6 +24,7 @@ export default function AdminShipment() {
       <div className="ph">
         <div><h1>Shipment {s.awb}</h1><p>Order #{s.order_no} · {s.customer?.business_name || s.customer?.name} · booked {dTime(s.created_at)}</p></div>
         <div className="row wrap">
+          {s.provider === 'manual' && <button className="btn btn-outline" onClick={async () => { const awb = prompt('Courier AWB / tracking number for ' + (s.courier_name || 'this carrier')); if (!awb) return; try { const r = await api('/admin/shipments/' + s.id + '/courier-awb', { method: 'PUT', body: { awb } }); toast('AWB updated'); setS({ ...s, awb: r.awb }); } catch (e) { toast(e.message, true); } }}>Set courier AWB</button>}
           <button className="btn btn-orange" onClick={() => setModal('status')}>Update status</button>
           <button className="btn btn-outline" onClick={() => setModal('wd')}>Add weight discrepancy</button>
           <button className="btn btn-outline" onClick={() => setModal('edit')}>Edit</button>
@@ -55,7 +56,7 @@ export default function AdminShipment() {
           <div className="kv"><span>To</span><b>{s.to_name}, {s.to_address}, {s.to_city} {s.to_pincode}</b></div>
           <div className="kv"><span>Receiver phone</span><b>{s.to_phone}</b></div>
           <div className="kv"><span>Product</span><b>{s.product || '—'} · {inr(s.invoice_value)}</b></div>
-          <div className="kv"><span>Mode</span><b>{s.payment_mode === 'cod' ? `COD ${inr(s.cod_amount)} · ${s.cod_status}` : 'Prepaid'}</b></div>
+          <div className="kv"><span>Mode</span><b>{s.payment_mode === 'cod' ? `COD ${inr(s.cod_amount)} · ${s.cod_status}` : s.payment_mode === 'topay' ? 'To Pay (FOD)' : 'Prepaid'}</b></div>
           <div className="kv"><span>Declared</span><b>{kg(s.weight)} · {+s.length}×{+s.breadth}×{+s.height} cm</b></div>
           <div className="kv"><span>Volumetric / chargeable</span><b>{kg(s.vol_weight)} / {kg(s.chargeable_weight)}</b></div>
           <div className="kv"><span>Courier weight</span><b>{s.courier_weight ? kg(s.courier_weight) : '—'}</b></div>

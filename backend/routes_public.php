@@ -117,6 +117,14 @@ route('POST', '/auth/forgot', function () {
 });
 
 // ---------- files ----------
+// logos of carriers added in admin (shown next to their rates)
+route('GET', '/public/carrier-logo/(\d+)', function ($id) {
+    if (!val("SELECT id FROM carriers WHERE logo_file_id=?", [$id])) fail('Not found', 404);
+    $f = one("SELECT mime, data FROM files WHERE id=?", [$id]);
+    if (!$f || strpos($f['mime'], 'image/') !== 0) fail('Not found', 404);
+    header('Content-Type: ' . $f['mime']); header('Cache-Control: public, max-age=86400'); echo $f['data']; exit;
+});
+
 // public courier-logo images uploaded by admin for the home page slider
 route('GET', '/public/logo/(\d+)', function ($id) {
     $srcs = array_map(fn($l) => is_array($l) ? ($l['src'] ?? '') : '', (array) (content()['partner_logos'] ?? []));

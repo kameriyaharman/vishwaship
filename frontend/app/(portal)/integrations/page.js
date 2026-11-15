@@ -25,22 +25,57 @@ export default function Integrations() {
   );
 }
 
+const STORE_INFO = {
+  shopify: { name: 'Shopify', logo: '🛍️', help: ['In Shopify admin open Settings → Apps and sales channels → Develop apps → Create an app.', 'Configuration → Admin API scopes: read_orders, read_fulfillments, write_fulfillments (also read_merchant_managed_fulfillment_orders, write_merchant_managed_fulfillment_orders). Save → Install app.', 'Copy the Admin API access token (starts with shpat_) and paste it below.'] },
+  woocommerce: { name: 'WooCommerce', logo: '🛒', help: ['In WordPress open WooCommerce → Settings → Advanced → REST API → Add key.', 'Permissions: Read/Write → Generate API key.', 'Copy the Consumer key (ck_…) and Consumer secret (cs_…) below. Your site must use https://.'] },
+  custom: { name: 'Custom website / app', logo: '🌐', help: ['Generate your API key in the API Integration tab.', 'From your website, POST each new order to /me/orders (X-Api-Key header) — it appears in Drafts to book.', 'Optional: add a webhook URL to receive shipment status updates (signed with X-Vishwaship-Signature).'] },
+};
+const OTHER = [['Amazon (Easy Ship / Self Ship)', 'Ship Amazon self-fulfilled orders'], ['Flipkart / Meesho', 'Marketplace self-ship orders'], ['Excel / CSV', 'Bulk upload orders from a spreadsheet']];
+
 function Channels() {
+  const { data: d, reload } = useLoad(() => api('/me/channels'), []);
+  const [connect, setConnect] = useState(null);
   const [req, setReq] = useState(null);
   const [msg, setMsg] = useState('');
+  const items = d?.items || [];
   return (
     <>
+      {items.length > 0 && (
+        <div className="card mb16">
+          <div className="card-h"><h3><Icon name="link" />Connected stores</h3><Link href="/integrations/?tab=oms" onClick={() => setTimeout(() => location.reload(), 50)} className="link small">View imported orders →</Link></div>
+          <div className="col" style={{ gap: 8 }}>
+            {items.map((c) => (
+              <div key={c.id} className="row between wrap" style={{ border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px', gap: 10 }}>
+                <span><b>{STORE_INFO[c.type]?.logo} {c.name}</b> <span className="tiny muted">· {STORE_INFO[c.type]?.name}</span>
+                  <div className="tiny muted">{c.type === 'custom' ? (c.settings.webhook_url ? 'Webhook: ' + c.settings.webhook_url : 'Orders via API · no webhook set') : `${c.imported} orders imported · last sync ${c.last_sync ? dShort(c.last_sync) + ' ' + c.last_sync.slice(11, 16) : '—'}`}</div>
+                  {c.last_error && <div className="tiny red">{c.last_error}</div>}</span>
+                <span className="row" style={{ gap: 8 }}>
+                  {c.type !== 'custom' && <label className="check tiny"><input type="checkbox" checked={!!c.settings.push_tracking} onChange={async (e) => { await api('/me/channels/' + c.id, { method: 'PUT', body: { push_tracking: e.target.checked } }); reload(); }} /> Send tracking to store</label>}
+                  {c.type !== 'custom' && <AsyncBtn className="btn btn-outline btn-sm" onClick={async () => { try { const r = await api('/me/channels/' + c.id + '/sync', { method: 'POST' }); toast(r.imported ? `${r.imported} new order(s) imported to Drafts` : 'No new orders'); } catch (e) { toast(e.message, true); } reload(); }}>Sync orders</AsyncBtn>}
+                  <AsyncBtn className="btn btn-outline btn-sm" confirmText={'Disconnect ' + c.name + '?'} onClick={async () => { await api('/me/channels/' + c.id, { method: 'DELETE' }); toast('Disconnected'); reload(); }}>Disconnect</AsyncBtn>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-        {CHANNELS.map(([n, d]) => (
+        {Object.entries(STORE_INFO).map(([k, v]) => (
+          <div key={k} className="card">
+            <b style={{ fontSize: 16 }}>{v.logo} {v.name}</b>
+            <div className="small muted mt8">{k === 'shopify' ? 'Import unfulfilled orders automatically and push AWB & tracking back to Shopify.' : k === 'woocommerce' ? 'Import processing orders and add tracking notes to WooCommerce orders.' : 'Send orders from any website or software through our API and get status webhooks.'}</div>
+            <button className="btn btn-orange btn-sm mt16" onClick={() => setConnect(k)}>Connect</button>
+          </div>
+        ))}
+        {OTHER.map(([n, dd]) => (
           <div key={n} className="card">
-            <b>{n}</b><div className="small muted mt8">{d}</div>
+            <b>{n}</b><div className="small muted mt8">{dd}</div>
             {n === 'Excel / CSV' ? <Link href="/shipments/" className="btn btn-outline btn-sm mt16">Bulk upload</Link>
-              : n === 'Custom website' ? <Link href="/integrations/?tab=api" onClick={() => location.reload()} className="btn btn-outline btn-sm mt16">Get API key</Link>
-                : <button className="btn btn-orange btn-sm mt16" onClick={() => { setReq(n); setMsg(`Please connect my ${n} store. Store URL: `); }}>Request connection</button>}
+              : <button className="btn btn-outline btn-sm mt16" onClick={() => { setReq(n); setMsg(`Please connect my ${n} account. Seller ID / store: `); }}>Request connection</button>}
           </div>
         ))}
       </div>
-      <p className="small muted mt12">Store connections are set up by the Vishwaship team — send a request and we’ll contact you to link your store.</p>
+      {connect && <ConnectStore type={connect} hasKey={d?.api_key} onClose={() => setConnect(null)} onDone={() => { setConnect(null); reload(); }} />}
       {req && (
         <Modal title={`Connect ${req}`} onClose={() => setReq(null)}>
           <textarea className="textarea" value={msg} onChange={(e) => setMsg(e.target.value)} />
@@ -48,6 +83,44 @@ function Channels() {
         </Modal>
       )}
     </>
+  );
+}
+
+function ConnectStore({ type, hasKey, onClose, onDone }) {
+  const info = STORE_INFO[type];
+  const [f, setF] = useState({ store_url: '', token: '', consumer_key: '', consumer_secret: '', webhook_url: '', complete_order: false });
+  const [secret, setSecret] = useState(null);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  if (secret) return (
+    <Modal title="Custom website connected" onClose={onDone}>
+      <p className="small">Webhook signing secret (shown once) — verify <code>X-Vishwaship-Signature</code> = HMAC-SHA256 of the request body:</p>
+      <div className="mono note" style={{ wordBreak: 'break-all' }}>{secret}</div>
+      <button className="btn btn-orange mt12" onClick={onDone}>Done</button>
+    </Modal>
+  );
+  return (
+    <Modal title={'Connect ' + info.name} onClose={onClose}>
+      <ol className="small" style={{ paddingLeft: 18, margin: '0 0 12px', lineHeight: 1.6 }}>{info.help.map((h) => <li key={h}>{h}</li>)}</ol>
+      {type === 'shopify' && <>
+        <div className="field"><label>Store domain</label><input className="input" placeholder="yourstore.myshopify.com" value={f.store_url} onChange={set('store_url')} /></div>
+        <div className="field mt8"><label>Admin API access token</label><input className="input" type="password" autoComplete="new-password" placeholder="shpat_…" value={f.token} onChange={set('token')} /></div>
+      </>}
+      {type === 'woocommerce' && <>
+        <div className="field"><label>Store URL</label><input className="input" placeholder="https://yourstore.com" value={f.store_url} onChange={set('store_url')} /></div>
+        <div className="field mt8"><label>Consumer key</label><input className="input" autoComplete="off" placeholder="ck_…" value={f.consumer_key} onChange={set('consumer_key')} /></div>
+        <div className="field mt8"><label>Consumer secret</label><input className="input" type="password" autoComplete="new-password" placeholder="cs_…" value={f.consumer_secret} onChange={set('consumer_secret')} /></div>
+        <label className="check mt8 small"><input type="checkbox" checked={f.complete_order} onChange={set('complete_order')} /> Mark the WooCommerce order Completed after booking</label>
+      </>}
+      {type === 'custom' && <>
+        {!hasKey && <div className="err small mb8">Generate your API key in the API Integration tab first.</div>}
+        <div className="field"><label>Website name / URL</label><input className="input" placeholder="https://mysite.com" value={f.store_url} onChange={set('store_url')} /></div>
+        <div className="field mt8"><label>Webhook URL for status updates (optional)</label><input className="input" placeholder="https://mysite.com/vishwaship-webhook" value={f.webhook_url} onChange={set('webhook_url')} /></div>
+      </>}
+      <AsyncBtn className="btn btn-orange mt16" onClick={async () => {
+        try { const r = await api('/me/channels', { method: 'POST', body: { type, ...f } }); toast(type === 'custom' ? 'Connected' : `Connected · ${r.imported_now || 0} order(s) imported to Drafts`); if (r.webhook_secret) setSecret(r.webhook_secret); else onDone(); }
+        catch (e) { toast(e.message, true); }
+      }}>Connect {info.name}</AsyncBtn>
+    </Modal>
   );
 }
 
@@ -105,7 +178,7 @@ function ApiTab() {
   const k = useLoad(() => api('/me/api-key'), []);
   const [key, setKey] = useState('');
   const base = API.startsWith('http') ? API : (typeof window !== 'undefined' ? location.origin : '') + API;
-  const ep = [['POST', '/me/quote', 'Get rates — {from, to, weight, l, b, h, payment, cod_amount}'], ['POST', '/me/shipments', 'Create shipment & get AWB — {pickup_id, to_name, to_phone, to_pincode, to_city, to_state, to_address, product, invoice_value, payment_mode, cod_amount, weight, length, breadth, height, service}'],
+  const ep = [['POST', '/me/orders', 'Push an order from your website (lands in Drafts) — {order_id, order_ref, to_name, to_phone, to_address, to_city, to_state, to_pincode, product, invoice_value, payment_mode, cod_amount, weight, length, breadth, height}'], ['POST', '/me/quote', 'Get rates (GST-inclusive totals, courier logo) — {from, to, weight, l, b, h, payment, cod_amount, kind: b2c|b2b, box_list}'], ['POST', '/me/shipments', 'Create shipment & get AWB — {pickup_id, to_name, to_phone, to_pincode, to_city, to_state, to_address, product, invoice_value, payment_mode, cod_amount, weight, length, breadth, height, service}'],
     ['GET', '/me/shipments?q=AWB', 'Search / list shipments'], ['GET', '/me/shipments/{id}', 'Shipment details with tracking history'], ['POST', '/me/shipments/{id}/cancel', 'Cancel before pickup (refund to wallet)'],
     ['GET', '/me/pickups', 'Your warehouses (pickup_id)'], ['GET', '/public/track/{awb}', 'Public tracking (no key needed)'], ['GET', '/public/edd?from=&to=', 'Estimated delivery date (no key needed)']];
   return (

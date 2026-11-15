@@ -66,7 +66,7 @@ export default function Shipments() {
                   <td className="mono" onClick={(e) => e.stopPropagation()}><Link className="awb-link" href={'/track/?awb=' + encodeURIComponent(s.awb)}>{s.awb}</Link></td><td className="hide-sm">#{s.order_no}</td>
                   <td>{s.from_city} {s.from_pincode} → {s.to_city} {s.to_pincode}<div className="tiny muted">{s.to_name}</div></td>
                   <td className="hide-sm">{kg(s.chargeable_weight)}</td><td><Chip s={s.payment_mode} label={s.payment_mode === 'cod' ? 'COD' : s.payment_mode === 'topay' ? 'To Pay' : 'Prepaid'} /></td>
-                  <td className="num">{inr(+s.freight + +s.cod_charge)}</td><td><Chip s={s.status_key} label={s.status_label} /></td>
+                  <td className="num">{inr(s.total)}<div className="tiny muted">incl. GST</div></td><td><Chip s={s.status_key} label={s.status_label} /></td>
                   <td className="hide-sm">{dShort(s.created_at)}</td>
                   <td onClick={(e) => e.stopPropagation()}><span className="row-actions">
                     <Link href={'/shipment/?id=' + s.id} className="link small">Track</Link>
