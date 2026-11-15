@@ -258,6 +258,7 @@ route('POST', '/admin/tickets/(\d+)', function ($id) {
     if ($msg !== '' || $files !== '') {
         insert('ticket_messages', ['ticket_id' => $id, 'author_type' => 'staff', 'author_id' => $me['id'], 'message' => $msg, 'file_ids' => $files ?: null]);
         $upd['last_reply_by'] = 'staff'; $upd['reply'] = $msg ?: $t['reply'];
+        if ($msg) notify_user((int) $t['user_id'], 'ticket_reply', ['ticket_no' => $t['ticket_no'], 'message' => mb_substr($msg, 0, 300)]);
     }
     if (($st = in('status')) && isset(TICKET_STATUSES[$st]) && $st !== $t['status']) {
         $upd['status'] = $st; ticket_event((int)$id, 'Status changed to ' . TICKET_STATUSES[$st] . ' by ' . $me['name'], (int)$me['id']); $upd['last_reply_by'] = 'staff';
