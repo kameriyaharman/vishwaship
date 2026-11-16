@@ -122,6 +122,9 @@ function migrate(): void {
     q("UPDATE cod_remittances SET amount_paid=amount, paid_at=COALESCE(paid_at, CONCAT(remit_date, ' 12:00:00')) WHERE amount_paid IS NULL AND status='paid'");
     $cc = json_decode((string) val("SELECT v FROM settings WHERE k='content'"), true);
     if (is_array($cc) && (($cc['hero_image'] ?? '') === '' || str_contains((string) ($cc['hero_image'] ?? ''), 'images.hostinger.com'))) { $cc['hero_image'] = '/hero.jpg'; set_setting('content', $cc); }
+    // v15: password reset links
+    $pdo->exec("CREATE TABLE IF NOT EXISTS password_resets (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, token_hash CHAR(64) NOT NULL, expires_at DATETIME NOT NULL,
+        used_at DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX(token_hash), INDEX(user_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     // v14: store connectors (Shopify / WooCommerce / custom website)
     $pdo->exec("CREATE TABLE IF NOT EXISTS channels (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, type VARCHAR(20) NOT NULL, name VARCHAR(120) NULL, store_url VARCHAR(255) NULL,
         credentials TEXT NULL, settings TEXT NULL, status VARCHAR(20) NOT NULL DEFAULT 'connected', imported INT NOT NULL DEFAULT 0, last_sync DATETIME NULL, last_error VARCHAR(255) NULL,

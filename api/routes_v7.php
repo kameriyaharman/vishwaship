@@ -54,6 +54,8 @@ route('POST', '/me/kyc', function () {
     if ($type === 'company' && !empty($b['business_name'])) $d['business_name'] = trim((string) $b['business_name']);
     update('users', $d, 'id=?', [$u['id']]);
     activity((int)$u['id'], 'Submitted KYC', $type);
+    notify_user((int) $u['id'], 'kyc_submitted');
+    notify_admin('admin_kyc_submitted', ['customer' => $u['name'], 'customer_email' => $u['email'], 'kyc_type' => $d['kyc_type']], ['Review KYC', site_url() . '/admin/customers/?kyc=submitted']);
     return public_user(one("SELECT * FROM users WHERE id=?", [$u['id']]));
 });
 
@@ -185,6 +187,8 @@ route('POST', '/me/tickets', function () {
     insert('ticket_messages', ['ticket_id' => $id, 'author_type' => 'customer', 'author_id' => $u['id'], 'message' => $msg, 'file_ids' => ticket_files((string) in('file_ids', ''), (int)$u['id']) ?: null]);
     db()->commit();
     activity((int)$u['id'], 'Raised ticket', "$no · $cat");
+    notify_user((int) $u['id'], 'ticket_created', ['ticket_no' => $no, 'category' => $cat, 'message' => mb_substr($msg, 0, 300)]);
+    notify_admin('admin_new_ticket', ['customer' => $u['name'], 'ticket_no' => $no, 'category' => $cat, 'awb' => $ref ?: '—', 'message' => mb_substr($msg, 0, 500)], ['Open ticket', site_url() . '/admin/tickets/']);
     return ['id' => $id, 'ticket_no' => $no];
 });
 route('GET', '/me/tickets', function () {
