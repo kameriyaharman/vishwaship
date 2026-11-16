@@ -19,7 +19,8 @@ export default function ShippingLabel({ s, compact, prefs }) {
   return (
     <div className="label4x6" style={compact ? { width: '100%', minHeight: 0, fontSize: 11 } : undefined}>
       <div className="row between">{p.show_brand && p.brand_name ? <b style={{ fontSize: 15 }}>{p.brand_name}</b> : <Logo dark size="sm" />}<b style={{ fontSize: 11 }}>{s.courier_name || `Delhivery · ${s.service === 'express' ? 'Express' : 'Surface'}`}</b></div>
-      <div className="center mt8"><Barcode value={s.awb} height={compact ? 42 : 60} /><div className="mono" style={{ fontSize: compact ? 13 : 16, marginTop: 4 }}>{s.awb}</div></div>
+      {s.box_count > 1 && <div className="center" style={{ marginTop: 6 }}><span style={{ display: 'inline-block', background: '#000', color: '#fff', fontWeight: 800, fontSize: compact ? 13 : 16, padding: '3px 12px', borderRadius: 4 }}>BOX {s.box_no} OF {s.box_count}</span></div>}
+      <div className="center mt8"><Barcode value={s.box_awb || s.awb} height={compact ? 42 : 60} /><div className="mono" style={{ fontSize: compact ? 13 : 16, marginTop: 4 }}>{s.box_awb || s.awb}</div>{s.box_awb && s.box_awb !== s.awb && <div className="tiny">Master AWB {s.awb}</div>}</div>
       <div className="sep" />
       <div className="row" style={{ alignItems: 'flex-start', gap: 14 }}>
         <div className="grow"><b>TO</b><div>{s.to_name}</div><div>{s.to_address}</div><div>{s.to_city}{s.to_state ? ', ' + s.to_state : ''} {s.to_pincode}</div>{!p.hide_buyer_phone && <div>{s.to_phone}</div>}</div>

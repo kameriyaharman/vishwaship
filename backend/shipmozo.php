@@ -103,6 +103,10 @@ function shipmozo_create(array $s, string $courierId): array {
     $p = !empty($s['pickup_id']) ? one("SELECT * FROM pickup_addresses WHERE id=?", [$s['pickup_id']]) : null;
     $wh = ($p ? shipmozo_ensure_warehouse($p) : null) ?: setting('shipmozo_warehouse_id');
     if (!$wh) return ['ok' => false, 'error' => 'Pickup address is not registered on Shipmozo yet' . ($p && $p['sm_error'] ? ' (' . $p['sm_error'] . ')' : '') . ' — open Pickup addresses and retry.'];
+    $bl = json_decode((string) ($s['box_list'] ?? ''), true) ?: [];
+    $bl = norm_boxes($s['length'] ?? 10, $s['breadth'] ?? 10, $s['height'] ?? 10, max(1, (int) ($s['boxes'] ?? 1)), $bl);
+    $nBoxes = array_sum(array_column($bl, 'n'));
+    $pkg = ($s['ship_type'] ?? 'b2c') === 'b2b' ? setting('shipmozo_b2b_package_type', 'B2B') : ($nBoxes > 1 ? 'MPS' : setting('shipmozo_package_type', 'SPS'));
     $push = shipmozo_http('POST', 'push-order', [
         'order_id' => $s['order_no'], 'order_date' => date('Y-m-d'), 'order_type' => 'ESSENTIALS',
         'consignee_name' => $s['to_name'], 'consignee_phone' => (int) substr(preg_replace('/\D/', '', (string) $s['to_phone']), -10), 'consignee_email' => '',
@@ -112,7 +116,9 @@ function shipmozo_create(array $s, string $courierId): array {
         'payment_type' => $s['payment_mode'] === 'cod' ? 'COD' : 'PREPAID', 'cod_amount' => $s['payment_mode'] === 'cod' ? (string) round((float) $s['cod_amount']) : '',
         'weight' => max(1, (int) round($s['weight'] * 1000)), 'length' => max(1, (int) round($s['length'] ?: 10)), 'width' => max(1, (int) round($s['breadth'] ?: 10)), 'height' => max(1, (int) round($s['height'] ?: 10)),
         'warehouse_id' => $wh, 'gst_ewaybill_number' => (string) ($s['ewaybill_no'] ?? ''), 'gstin_number' => '',
-    ], 'Push order', 'Order #' . $s['order_no']);
+        // every box goes to the courier (same format as the rate calculator) so each box gets its own label / barcode
+        'type_of_package' => $pkg, 'no_of_box' => (string) $nBoxes, 'number_of_boxes' => $nBoxes, 'dimensions' => shipmozo_box_dims($bl),
+    ], 'Push order', 'Order #' . $s['order_no'] . ($nBoxes > 1 ? " · $nBoxes boxes ($pkg)" : ''));
     $dup = !$push['ok'] && preg_match('/already|exist|duplicate/i', (string) $push['error']);
     if (!$push['ok'] && !$dup) return ['ok' => false, 'error' => 'Courier booking failed: ' . ($push['error'] ?: 'check keys / warehouse ID')];
     $d = sm_data($push['json']);
@@ -132,23 +138,55 @@ function shipmozo_create(array $s, string $courierId): array {
         if (preg_match('/"awb_number"\s*:\s*"?([A-Za-z0-9]+)/', $j, $m)) $awb = $m[1];
     }
     if (!$awb) return ['ok' => false, 'order_id' => $oid, 'error' => 'The courier was assigned it has not returned an AWB yet — please try again in a minute.'];
-    return ['ok' => true, 'awb' => (string) $awb, 'order_id' => $oid];
+    $child = $nBoxes > 1 ? shipmozo_child_awbs([$as['json'] ?? null, $sd ?? null], (string) $awb) : [];
+    if ($nBoxes > 1 && !$child) {   // read the order back for per-box AWBs
+        $od = shipmozo_http('GET', 'get-order-detail/' . rawurlencode($oid), null, 'Order detail', "#$oid · boxes");
+        $child = shipmozo_child_awbs([$od['json'] ?? null], (string) $awb);
+    }
+    return ['ok' => true, 'awb' => (string) $awb, 'order_id' => $oid, 'child_awbs' => $child];
 }
 
-/** courier's own label from Shipmozo: ['url'=>..] or ['pdf'=>binary] or ['error'=>..] */
+/** per-box (child / MPS) AWBs found anywhere in Shipmozo responses, excluding the master AWB */
+function shipmozo_child_awbs(array $jsons, string $master): array {
+    $out = [];
+    foreach ($jsons as $j) {
+        if (!is_array($j)) continue;
+        array_walk_recursive($j, function ($v, $k) use (&$out) {
+            if (is_string($k) && preg_match('/awb|waybill/i', $k) && (is_string($v) || is_int($v)) && preg_match('/^[A-Za-z0-9]{6,}$/', (string) $v)) $out[] = (string) $v;
+        });
+        foreach (['child_awb', 'child_awbs', 'mps_awb', 'mps_awbs', 'awb_numbers', 'child_waybills', 'packages'] as $key) {
+            $f = sm_find($j, $key);
+            if (is_string($f)) foreach (preg_split('/[\s,]+/', $f) as $x) if (preg_match('/^[A-Za-z0-9]{6,}$/', $x)) $out[] = $x;
+        }
+    }
+    return array_values(array_diff(array_unique($out), [$master]));
+}
+function sm_find($a, string $key) {
+    if (!is_array($a)) return null;
+    foreach ($a as $k => $v) { if ($k === $key) return $v; if (is_array($v) && ($r = sm_find($v, $key)) !== null) return $r; }
+    return null;
+}
+
+/** courier's own labels from Shipmozo — every box/page is returned:
+ *  ['items' => [['url'=>..] | ['pdf'=>binary] | ['img'=>binary], …]] or ['error'=>..] */
 function shipmozo_label(string $awb): array {
     $r = shipmozo_http('GET', 'get-order-label/' . rawurlencode($awb), null, 'Order label', $awb);
     if (!$r['ok']) return ['error' => $r['error'] ?: 'Label not available yet'];
     $d = sm_data($r['json']);
     $flat = [];
     if (is_array($d)) array_walk_recursive($d, function ($v, $k) use (&$flat) { $flat[] = [$k, $v]; }); else $flat[] = ['data', $d];
-    foreach ($flat as [$k, $v]) if (is_string($v) && preg_match('#^https?://#', $v)) return ['url' => $v];
-    foreach ($flat as [$k, $v]) if (is_string($v) && strlen($v) > 200) {
-        $b = base64_decode(preg_replace('#^data:[^,]+,#', '', $v), true);
-        if ($b !== false && str_starts_with($b, '%PDF')) return ['pdf' => $b];
-        if ($b !== false && preg_match('/^\x89PNG|^\xFF\xD8/', $b)) return ['img' => $b];
+    $items = []; $seen = [];
+    foreach ($flat as [$k, $v]) {
+        if (!is_string($v) || isset($seen[$v])) continue;
+        if (preg_match('#^https?://#', $v) && preg_match('/label|pdf|png|jpe?g|print|download|s3|storage/i', $v . $k)) { $items[] = ['url' => $v]; $seen[$v] = 1; continue; }
+        if (strlen($v) > 200) {
+            $b = base64_decode(preg_replace('#^data:[^,]+,#', '', $v), true);
+            if ($b !== false && str_starts_with($b, '%PDF')) { $items[] = ['pdf' => $b]; $seen[$v] = 1; }
+            elseif ($b !== false && preg_match('/^\x89PNG|^\xFF\xD8/', $b)) { $items[] = ['img' => $b]; $seen[$v] = 1; }
+        }
     }
-    return ['error' => 'Courier partner returned the label in an unexpected format (see API logs)'];
+    if (!$items) foreach ($flat as [$k, $v]) if (is_string($v) && preg_match('#^https?://#', $v)) { $items[] = ['url' => $v]; break; }
+    return $items ? ['items' => $items] : ['error' => 'Courier partner returned the label in an unexpected format (see API logs)'];
 }
 
 function shipmozo_track(string $awb): ?array {
