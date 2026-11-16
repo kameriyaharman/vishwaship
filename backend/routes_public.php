@@ -83,6 +83,8 @@ route('POST', '/auth/signup', function () {
         'mobile' => substr($mobile, -10), 'email' => $email, 'password_hash' => password_hash($pw, PASSWORD_DEFAULT),
         'gstin' => $gst ?: null, 'monthly_volume' => in('monthly_volume', null), 'last_login' => date('Y-m-d H:i:s')]);
     $u = one("SELECT * FROM users WHERE id=?", [$id]);
+    notify_user((int) $id, 'welcome', [], ['Complete KYC', site_url() . '/settings/?tab=kyc']);
+    notify_admin('admin_new_signup', ['customer' => $u['name'], 'business' => (string) $u['business_name'], 'customer_email' => $email, 'mobile' => $u['mobile']], ['Open customers', site_url() . '/admin/customers/']);
     return ['token' => make_token($u), 'user' => public_user($u)];
 });
 
@@ -107,13 +109,36 @@ route('POST', '/auth/password', function () {
     $n = (string) req('new'); if (strlen($n) < 6) fail('New password must be at least 6 characters');
     update('users', ['password_hash' => password_hash($n, PASSWORD_DEFAULT)], 'id=?', [$u['id']]);
     activity((int)$u['id'], 'Changed password');
+    notify_user((int) $u['id'], 'password_changed');
     return ['ok' => true];
 });
 
 route('POST', '/auth/forgot', function () {
     $e = strtolower(trim((string) req('email')));
-    if (val("SELECT id FROM users WHERE email=?", [$e])) insert('enquiries', ['name' => 'Password reset request', 'email' => $e, 'message' => 'User requested a password reset.']);
-    return ['ok' => true, 'message' => 'If this email is registered, our team will contact you to reset your password.'];
+    $generic = ['ok' => true, 'message' => 'If this email is registered, a password reset link has been sent to it. Please check your inbox (and spam folder).'];
+    $u = one("SELECT id, status FROM users WHERE email=?", [$e]);
+    if (!$u || $u['status'] === 'blocked') return $generic;
+    if ((int) val("SELECT COUNT(*) FROM password_resets WHERE user_id=? AND created_at > NOW() - INTERVAL 15 MINUTE", [$u['id']]) >= 3) return $generic;
+    $token = bin2hex(random_bytes(32));
+    insert('password_resets', ['user_id' => $u['id'], 'token_hash' => hash('sha256', $token), 'expires_at' => date('Y-m-d H:i:s', time() + 3600)]);
+    $r = notify_user((int) $u['id'], 'password_reset', [], ['Reset password', site_url() . '/reset-password/?token=' . $token], true);
+    if (!$r['ok']) {   // email not configured / failed → fall back to the team
+        insert('enquiries', ['name' => 'Password reset request', 'email' => $e, 'message' => 'User requested a password reset (email could not be sent: ' . ($r['error'] ?? '') . ').']);
+        return ['ok' => true, 'message' => 'If this email is registered, our team will contact you to reset your password.'];
+    }
+    return $generic;
+});
+
+route('POST', '/auth/reset', function () {
+    $token = (string) req('token'); $pw = (string) req('password');
+    if (strlen($pw) < 6) fail('Password must be at least 6 characters');
+    $r = one("SELECT * FROM password_resets WHERE token_hash=? AND used_at IS NULL AND expires_at > NOW()", [hash('sha256', $token)]);
+    if (!$r) fail('This reset link is invalid or has expired. Please request a new one.');
+    update('users', ['password_hash' => password_hash($pw, PASSWORD_DEFAULT), 'token_version' => (int) val("SELECT token_version FROM users WHERE id=?", [$r['user_id']]) + 1], 'id=?', [$r['user_id']]);
+    q("UPDATE password_resets SET used_at=NOW() WHERE user_id=? AND used_at IS NULL", [$r['user_id']]);
+    activity((int) $r['user_id'], 'Reset password via email link');
+    notify_user((int) $r['user_id'], 'password_changed');
+    return ['ok' => true, 'message' => 'Password updated. Please login with your new password.'];
 });
 
 // ---------- files ----------

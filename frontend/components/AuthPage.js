@@ -81,9 +81,9 @@ export default function AuthPage({ mode }) {
       </div>
       {forgot && (
         <Modal title="Reset password" onClose={() => setForgot(false)}>
-          <p className="small muted">Enter your registered email. Our team will verify and help you reset your password.</p>
+          <p className="small muted">Enter your registered email. We will email you a link to set a new password.</p>
           <input className="input" type="email" value={fe} onChange={(e) => setFe(e.target.value)} placeholder="you@business.in" />
-          <button className="btn btn-orange mt12" onClick={async () => { try { const r = await api('/auth/forgot', { method: 'POST', body: { email: fe } }); toast(r.message); setForgot(false); } catch (e) { toast(e.message, true); } }}>Send request</button>
+          <button className="btn btn-orange mt12" onClick={async () => { try { const r = await api('/auth/forgot', { method: 'POST', body: { email: fe } }); toast(r.message); setForgot(false); } catch (e) { toast(e.message, true); } }}>Send reset link</button>
         </Modal>
       )}
       <Toaster />

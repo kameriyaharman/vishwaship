@@ -10,7 +10,14 @@ const NOTIFY_EVENTS = [
     'booked' => 'Shipment booked', 'picked_up' => 'Picked up', 'out_for_delivery' => 'Out for delivery', 'delivered' => 'Delivered',
     'ndr' => 'Delivery attempt failed (NDR)', 'rto_in_transit' => 'Returning to origin (RTO)',
     'wallet_recharge' => 'Wallet recharged', 'low_wallet' => 'Low wallet balance', 'ticket_reply' => 'Support ticket reply', 'kyc_update' => 'KYC status update',
+    'welcome' => 'Welcome (new account)', 'password_reset' => 'Forgot password (reset link)', 'password_changed' => 'Password changed',
+    'kyc_submitted' => 'KYC submitted (received)', 'ticket_created' => 'Support ticket raised',
+    'admin_new_signup' => 'Admin alert · new sign-up', 'admin_kyc_submitted' => 'Admin alert · KYC to review', 'admin_new_ticket' => 'Admin alert · new ticket',
 ];
+/** account events that are always emailed (cannot be switched off) */
+const ALWAYS_EMAIL = ['password_reset', 'password_changed'];
+/** events emailed to the admin alert address instead of the customer */
+const ADMIN_EVENTS = ['admin_new_signup', 'admin_kyc_submitted', 'admin_new_ticket'];
 const BUYER_EVENTS = ['booked', 'picked_up', 'out_for_delivery', 'delivered', 'ndr'];
 
 function notif_defaults(): array {
@@ -24,7 +31,15 @@ function notif_defaults(): array {
         'wallet_recharge' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'Wallet recharged · ₹{amount}', 'text' => 'Hi {name}, ₹{amount} has been added to your Vishwaship wallet. Balance: ₹{balance}.'],
         'low_wallet' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'Low wallet balance', 'text' => 'Hi {name}, your Vishwaship wallet balance is ₹{balance}. Recharge to keep shipping without delay.'],
         'ticket_reply' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'New reply on ticket {ticket_no}', 'text' => 'Hi {name}, our support team replied on ticket {ticket_no}: {message}'],
-        'kyc_update' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'KYC {status}', 'text' => 'Hi {name}, your KYC is {status}. {message}'],
+        'kyc_update' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'Your KYC is {status}', 'text' => "Hi {name},\n\nYour KYC is {status}. {message}"],
+        'welcome' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'Welcome to Vishwaship, {name}!', 'text' => "Hi {name},\n\nWelcome to Vishwaship! Your account is ready.\n\nNext steps:\n1. Complete your KYC (Aadhaar, PAN, cancelled cheque)\n2. Add your pickup address\n3. Recharge your wallet and book your first shipment\n\nNeed help? Call {support}."],
+        'password_reset' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'Reset your Vishwaship password', 'text' => "Hi {name},\n\nWe received a request to reset your password. Click the button below to set a new password. This link is valid for 60 minutes.\n\nIf you did not request this, you can ignore this email — your password will not change."],
+        'password_changed' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'Your password was changed', 'text' => "Hi {name},\n\nThe password of your Vishwaship account was changed on {time}.\n\nIf this was not you, reset your password immediately and contact support at {support}."],
+        'kyc_submitted' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'KYC received — under review', 'text' => "Hi {name},\n\nThank you! We have received your KYC documents. Our team will review them shortly and you will get an email as soon as they are approved."],
+        'ticket_created' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'Ticket {ticket_no} received', 'text' => "Hi {name},\n\nWe have received your support ticket {ticket_no} ({category}). Our team will reply soon.\n\nYour message: {message}"],
+        'admin_new_signup' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'New sign-up: {customer}', 'text' => "A new customer signed up.\n\nName: {customer}\nBusiness: {business}\nEmail: {customer_email}\nMobile: {mobile}"],
+        'admin_kyc_submitted' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'KYC to review: {customer}', 'text' => "{customer} ({customer_email}) submitted KYC documents ({kyc_type}). Please review and approve in Admin → Customers."],
+        'admin_new_ticket' => ['email' => 1, 'sms' => 0, 'wa' => 0, 'subject' => 'New ticket {ticket_no}: {category}', 'text' => "{customer} raised ticket {ticket_no} ({category}).\nAWB: {awb}\n\n{message}"],
     ];
 }
 
@@ -51,15 +66,17 @@ function notif_http(string $url, string $method, array $headers, $body, string $
 }
 
 // ---- providers
-function send_email(string $to, string $subject, string $text, ?string $html = null): array {
+function send_email(string $to, string $subject, string $text, ?string $html = null, ?array $button = null): array {
     if (setting('email_enabled') !== '1' || setting('resend_api_key') === '') return ['ok' => false, 'error' => 'Email (Resend) is not enabled'];
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return ['ok' => false, 'error' => 'Invalid email'];
     $brand = htmlspecialchars(setting('company_name', 'Vishwaship'));
     $html = $html ?? '<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e6e9ef;border-radius:12px;overflow:hidden">'
         . '<div style="background:#0b1f3a;color:#fff;padding:16px 22px;font-size:18px;font-weight:700">vishwa<span style="color:#f0712c">ship</span>.com</div>'
-        . '<div style="padding:22px;color:#1a2433;font-size:15px;line-height:1.6">' . nl2br(htmlspecialchars($text)) . '</div>'
+        . '<div style="padding:22px;color:#1a2433;font-size:15px;line-height:1.6">' . nl2br(htmlspecialchars($text))
+        . ($button ? '<div style="margin:22px 0 6px"><a href="' . htmlspecialchars($button[1]) . '" style="background:#f0712c;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px;display:inline-block">' . htmlspecialchars($button[0]) . '</a></div>'
+            . '<div style="font-size:12px;color:#6b7183;word-break:break-all">Or open: ' . htmlspecialchars($button[1]) . '</div>' : '') . '</div>'
         . '<div style="padding:12px 22px;background:#f5f6fa;color:#6b7183;font-size:12px">' . $brand . ' · ' . htmlspecialchars((string) (content()['contact_phone'] ?? '')) . '</div></div>';
-    $body = ['from' => setting('resend_from', 'Vishwaship <noreply@vishwaship.com>'), 'to' => [$to], 'subject' => $subject, 'html' => $html, 'text' => $text];
+    $body = ['from' => setting('resend_from', 'Vishwaship <noreply@vishwaship.com>'), 'to' => [$to], 'subject' => $subject, 'html' => $html, 'text' => $text . ($button ? "\n\n{$button[0]}: {$button[1]}" : '')];
     if (setting('email_reply_to')) $body['reply_to'] = setting('email_reply_to');
     return notif_http('https://api.resend.com/emails', 'POST', ['Authorization: Bearer ' . setting('resend_api_key'), 'Content-Type: application/json'], $body, 'Resend · email', $to);
 }
@@ -138,12 +155,26 @@ function notify_shipment(array $s, string $event): void {
 }
 
 /** account event → seller email */
-function notify_user(int $userId, string $event, array $vars = []): void {
+function notify_user(int $userId, string $event, array $vars = [], ?array $button = null, bool $now = false): array {
+    $cfg = notif_config()[$event] ?? null;
+    if (!$cfg || (empty($cfg['email']) && !in_array($event, ALWAYS_EMAIL))) return ['ok' => false, 'error' => 'off'];
+    $send = function () use ($userId, $cfg, $vars, $button) {
+        $u = one("SELECT name, email FROM users WHERE id=?", [$userId]); if (!$u || !$u['email']) return ['ok' => false, 'error' => 'no email'];
+        $v = array_merge(['name' => $u['name'], 'support' => (string) (content()['contact_phone'] ?? ''), 'time' => date('d M Y, h:i A')], $vars);
+        return send_email($u['email'], notif_fill($cfg['subject'], $v), notif_fill($cfg['text'], $v), null, $button);
+    };
+    if ($now) return $send();
+    notify_later($send); return ['ok' => true];
+}
+
+/** internal alert → admin alert email (Integrations & Keys), falls back to reply-to / company email */
+function notify_admin(string $event, array $vars = [], ?array $button = null): void {
     $cfg = notif_config()[$event] ?? null;
     if (!$cfg || empty($cfg['email'])) return;
-    notify_later(function () use ($userId, $event, $cfg, $vars) {
-        $u = one("SELECT name, email FROM users WHERE id=?", [$userId]); if (!$u || !$u['email']) return;
-        $v = array_merge(['name' => $u['name']], $vars);
-        send_email($u['email'], notif_fill($cfg['subject'], $v), notif_fill($cfg['text'], $v));
+    $to = setting('admin_alert_email') ?: setting('email_reply_to') ?: (string) (content()['contact_email'] ?? '');
+    if (!$to) return;
+    notify_later(function () use ($to, $cfg, $vars, $button) {
+        foreach (preg_split('/[,;\s]+/', $to) as $addr) if ($addr) send_email($addr, notif_fill($cfg['subject'], $vars), notif_fill($cfg['text'], $vars), null, $button);
     });
 }
+function site_url(): string { return rtrim(setting('site_url') ?: 'https://vishwaship.com', '/'); }

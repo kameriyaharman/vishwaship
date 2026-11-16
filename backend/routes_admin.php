@@ -123,7 +123,7 @@ route('PUT', '/admin/customers/(\d+)', function ($id) {
     $before = (string) val("SELECT kyc_status FROM users WHERE id=?", [$id]);
     update('users', $d, "id=? AND role='customer'", [$id]);
     if (isset($d['kyc_status']) && $d['kyc_status'] !== $before && in_array($d['kyc_status'], ['verified', 'rejected'], true))
-        notify_user((int) $id, 'kyc_update', ['status' => $d['kyc_status'] === 'verified' ? 'approved' : 'not approved', 'message' => $d['kyc_status'] === 'verified' ? 'You can now book shipments.' : (string) ($d['kyc_note'] ?? 'Please re-upload your documents.')]);
+        notify_user((int) $id, 'kyc_update', ['status' => $d['kyc_status'] === 'verified' ? 'approved' : 'not approved', 'message' => $d['kyc_status'] === 'verified' ? 'You can now add your pickup address, recharge your wallet and book shipments.' : 'Reason: ' . (string) ($d['kyc_note'] ?? 'documents not clear') . '. Please re-upload your documents.'], $d['kyc_status'] === 'verified' ? ['Book a shipment', site_url() . '/book/'] : ['Re-upload KYC', site_url() . '/settings/?tab=kyc']);
     return public_user(one("SELECT * FROM users WHERE id=?", [$id]));
 });
 route('DELETE', '/admin/customers/(\d+)', function ($id) {
@@ -678,7 +678,7 @@ route('PUT', '/admin/shipments/(\d+)/courier-awb', function ($id) {
 });
 
 // ---------- Integrations & API keys (payments, notifications) ----------
-const INTEG_PLAIN = ['payment_gateway', 'razorpay_key_id', 'email_enabled', 'resend_from', 'email_reply_to', 'sms_enabled', 'way2sms_url', 'way2sms_sender_id', 'way2sms_usetype',
+const INTEG_PLAIN = ['payment_gateway', 'razorpay_key_id', 'email_enabled', 'resend_from', 'email_reply_to', 'admin_alert_email', 'sms_enabled', 'way2sms_url', 'way2sms_sender_id', 'way2sms_usetype',
     'way2sms_dlt_entity_id', 'wa_enabled', 'wati_endpoint', 'site_url'];
 const INTEG_SECRET = ['razorpay_key_secret', 'razorpay_webhook_secret', 'resend_api_key', 'way2sms_api_key', 'way2sms_secret', 'wati_token'];
 route('GET', '/admin/integrations', function () {

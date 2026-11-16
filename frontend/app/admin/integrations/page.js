@@ -55,6 +55,7 @@ export default function AdminIntegrations() {
           <Secret label="Resend API key" k="resend_api_key" f={f} d={d} setF={setF} ph="re_…" />
           <div className="field mt8"><label>From</label><input className="input" value={f.resend_from} onChange={set('resend_from')} placeholder="Vishwaship <noreply@vishwaship.com>" /></div>
           <div className="field mt8"><label>Reply-to (optional)</label><input className="input" value={f.email_reply_to} onChange={set('email_reply_to')} placeholder="support@vishwaship.com" /></div>
+            <div className="field mt8"><label>Admin alert email(s) <span className="muted">— new sign-up, KYC to review, new ticket</span></label><input className="input" value={f.admin_alert_email || ''} onChange={set('admin_alert_email')} placeholder="admin@vishwaship.com, ops@vishwaship.com" /></div>
           <p className="tiny muted">resend.com → Domains → add vishwaship.com and add the DNS records in Hostinger; then API Keys → Create.</p>
           <div className="row"><input className="input" placeholder="test email to" value={to.email} onChange={(e) => setTo({ ...to, email: e.target.value })} /><AsyncBtn className="btn btn-outline btn-sm" onClick={() => test('email')}>Send test</AsyncBtn></div>
         </div>
@@ -94,7 +95,7 @@ export default function AdminIntegrations() {
             return (
               <tr key={k}>
                 <td><b>{l}</b></td>
-                <td><input type="checkbox" checked={!!+ev[k].email} onChange={(e) => setE(k, 'email', e.target.checked ? 1 : 0)} /></td>
+                <td>{['password_reset', 'password_changed'].includes(k) ? <span className="tiny muted">Always</span> : <input type="checkbox" checked={!!+ev[k].email} onChange={(e) => setE(k, 'email', e.target.checked ? 1 : 0)} />}{k.startsWith('admin_') && <span className="tiny muted"> (to admin)</span>}</td>
                 <td>{buyer ? <input type="checkbox" checked={!!+ev[k].sms} onChange={(e) => setE(k, 'sms', e.target.checked ? 1 : 0)} /> : '—'}</td>
                 <td>{buyer ? <input type="checkbox" checked={!!+ev[k].wa} onChange={(e) => setE(k, 'wa', e.target.checked ? 1 : 0)} /> : '—'}</td>
                 <td><button className="link small" onClick={() => setOpen(open === k ? null : k)}>{open === k ? 'Close' : 'Edit text'}</button></td>
