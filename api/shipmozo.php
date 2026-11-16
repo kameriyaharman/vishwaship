@@ -37,6 +37,16 @@ function sm_data($j) { return is_array($j) ? ($j['data'] ?? $j['result_data'] ??
 function shipmozo_box_dims(array $bl): array {
     return array_map(fn($x) => ['no_of_box' => (string) max(1, (int) $x['n']), 'length' => (string) max(1, (int) round($x['l'])), 'width' => (string) max(1, (int) round($x['b'])), 'height' => (string) max(1, (int) round($x['h']))], $bl);
 }
+/** push-order box list — MPS needs each box's own weight (grams), split from the total by box volume */
+function shipmozo_push_dims(array $bl, float $totalKg): array {
+    $vol = 0; foreach ($bl as $x) $vol += max(1, $x['l'] * $x['b'] * $x['h']) * $x['n'];
+    $g = max(1, (int) round($totalKg * 1000));
+    return array_map(function ($x) use ($vol, $g) {
+        $per = max(1, (int) round($g * max(1, $x['l'] * $x['b'] * $x['h']) / $vol));
+        return ['no_of_box' => (string) max(1, (int) $x['n']), 'length' => (string) max(1, (int) round($x['l'])), 'width' => (string) max(1, (int) round($x['b'])),
+            'height' => (string) max(1, (int) round($x['h'])), 'weight' => (string) $per];
+    }, $bl);
+}
 function shipmozo_dims(array $s): array {
     return [['no_of_box' => (string) max(1, (int) ($s['boxes'] ?? 1)), 'length' => (string) max(1, (int) round($s['length'] ?? 10)), 'width' => (string) max(1, (int) round($s['breadth'] ?? 10)), 'height' => (string) max(1, (int) round($s['height'] ?? 10))]];
 }
@@ -117,7 +127,7 @@ function shipmozo_create(array $s, string $courierId): array {
         'weight' => max(1, (int) round($s['weight'] * 1000)), 'length' => max(1, (int) round($s['length'] ?: 10)), 'width' => max(1, (int) round($s['breadth'] ?: 10)), 'height' => max(1, (int) round($s['height'] ?: 10)),
         'warehouse_id' => $wh, 'gst_ewaybill_number' => (string) ($s['ewaybill_no'] ?? ''), 'gstin_number' => '',
         // every box goes to the courier (same format as the rate calculator) so each box gets its own label / barcode
-        'type_of_package' => $pkg, 'no_of_box' => (string) $nBoxes, 'number_of_boxes' => $nBoxes, 'dimensions' => shipmozo_box_dims($bl),
+        'type_of_package' => $pkg, 'no_of_box' => (string) $nBoxes, 'number_of_boxes' => $nBoxes, 'dimensions' => shipmozo_push_dims($bl, (float) $s['weight']),
     ], 'Push order', 'Order #' . $s['order_no'] . ($nBoxes > 1 ? " · $nBoxes boxes ($pkg)" : ''));
     $dup = !$push['ok'] && preg_match('/already|exist|duplicate/i', (string) $push['error']);
     if (!$push['ok'] && !$dup) return ['ok' => false, 'error' => 'Courier booking failed: ' . ($push['error'] ?: 'check keys / warehouse ID')];
