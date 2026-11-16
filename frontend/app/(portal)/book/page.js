@@ -273,7 +273,7 @@ export default function Book() {
             <div className="card">
               <div className="card-h"><h3><Icon name="rupee" style={{ color: 'var(--orange)' }} />Choose service & final rate</h3></div>
               {qErr && <div className="err mb12">{qErr}</div>}
-              {quote && !quote.options.length && <div className="note small">{f.ship_type === 'b2b' ? 'No B2B / cargo rate for this route yet — try B2C, or contact support for a B2B rate card.' : 'No courier available for this route and weight.'}</div>}
+              {quote && !quote.options.length && <div className="note small">{quote.notice ? quote.notice : f.ship_type === 'b2b' ? 'No B2B / cargo rate for this route yet — try B2C, or contact support for a B2B rate card.' : 'No courier available for this route and weight.'}</div>}
               {!quote ? <p className="muted small">Enter weight to see the final rate.</p> : (
                 <>
                   {quote.options.map((o) => (
