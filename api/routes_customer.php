@@ -248,6 +248,7 @@ function book_shipment(array $u, array $in, bool $draft = false): array {
         $res = shipmozo_create($data, (string) $opt['courier_id']);
         if (!$res['ok']) fail($res['error']);
         $data['provider_order_id'] = $res['order_id'];
+        if (!empty($res['child_awbs'])) $data['child_awbs'] = json_encode($res['child_awbs']);
     } elseif ($opt['provider'] === 'dlvb2b') {
         $res = b2b_create($data, $p);
         if (!$res['ok']) fail($res['error']);
@@ -276,10 +277,16 @@ route('GET', '/me/shipments/(\d+)/courier-label', function ($id) {
     $u = require_customer();
     $s = my_shipment((int) $id, $u);
     if ($s['provider'] !== 'shipmozo') fail('Courier label is available for partner-courier shipments');
-    $r = shipmozo_label((string) $s['awb']);
-    if (isset($r['url'])) return ['url' => $r['url']];
-    if (isset($r['pdf']) || isset($r['img'])) return ['data' => (isset($r['pdf']) ? 'data:application/pdf;base64,' : 'data:image/png;base64,') . base64_encode($r['pdf'] ?? $r['img'])];
-    fail($r['error']);
+    $awbs = array_merge([(string) $s['awb']], json_decode((string) ($s['child_awbs'] ?? ''), true) ?: []);
+    $out = []; $err = '';
+    foreach ($awbs as $a) {
+        $r = shipmozo_label($a);
+        if (isset($r['error'])) { $err = $r['error']; continue; }
+        foreach ($r['items'] as $it) $out[] = isset($it['url']) ? $it['url'] : ((isset($it['pdf']) ? 'data:application/pdf;base64,' : 'data:image/png;base64,') . base64_encode($it['pdf'] ?? $it['img']));
+    }
+    $out = array_values(array_unique($out));
+    if (!$out) fail($err ?: 'Label not available yet');
+    return ['labels' => $out, 'url' => str_starts_with($out[0], 'http') ? $out[0] : null, 'data' => str_starts_with($out[0], 'data:') ? $out[0] : null, 'boxes' => (int) $s['boxes']];
 });
 route('GET', '/me/shipments/(\d+)/b2b-label', function ($id) {
     $u = require_customer();

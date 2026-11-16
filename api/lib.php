@@ -242,8 +242,9 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
     // ---- Shipmozo B2C / B2B (many couriers)
     $smKey = $kind === 'b2b' ? 'shipmozo_b2b' : 'shipmozo_b2c';
     if (!in_array('shipmozo', $dis) && !$topay && svc_pricing($smKey)['enabled'] && shipmozo_on()) {
-        $smPkg = $kind === 'b2b' ? setting('shipmozo_b2b_package_type', 'B2B') : setting('shipmozo_package_type', 'SPS');
+        $smPkg = $kind === 'b2b' ? setting('shipmozo_b2b_package_type', 'B2B') : ($boxes > 1 ? 'MPS' : setting('shipmozo_package_type', 'SPS'));
         $rates = shipmozo_rates($from, $to, $charge, $l, $b, $h, $payment, $codAmount, $value ?: $codAmount, $boxes, $smPkg, $bl);
+        if (!$rates && $smPkg === 'MPS') $rates = shipmozo_rates($from, $to, $charge, $l, $b, $h, $payment, $codAmount, $value ?: $codAmount, $boxes, setting('shipmozo_package_type', 'SPS'), $bl);
         $rates = array_values(array_filter($rates, function ($r) use ($kind) {
             $isB2b = (bool) preg_match('/\b(b2b|ltl|ptl|cargo)\b/i', $r['name']);
             return $kind === 'b2b' ? true : !$isB2b;
