@@ -293,7 +293,8 @@ function quote(string $from, string $to, float $weight, $l, $b, $h, string $paym
     }
     usort($out, fn($x, $y) => ($x['to_pay'] ?? false ? $x['receiver_pays'] : $x['total']) <=> ($y['to_pay'] ?? false ? $y['receiver_pays'] : $y['total']));
     return ['zone' => $zone, 'zone_label' => ZONE_LABEL[$zone], 'kind' => $kind, 'boxes' => $boxes, 'vol_weight' => $vol, 'actual_weight' => $weight,
-        'chargeable_weight' => $kgSlab, 'raw_chargeable' => $charge, 'markup' => markup_for($user), 'gst_pct' => $gstPct, 'options' => $out];
+        'chargeable_weight' => $kgSlab, 'raw_chargeable' => $charge, 'markup' => markup_for($user), 'gst_pct' => $gstPct, 'options' => $out,
+        'notice' => ($topay && !$out) ? 'To Pay is not available on this route right now. Please choose Prepaid or COD to see courier rates.' : null];
 }
 
 // ---------- wallet ----------
