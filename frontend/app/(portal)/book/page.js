@@ -74,14 +74,19 @@ export default function Book() {
 
   useEffect(() => {
     api('/me/pickups').then((r) => { setPickups(r.items); const d = r.items.find((p) => p.is_default == 1) || r.items[0]; if (d) setPickupId(d.id); });
-    const did = qp('draft');
-    if (did) api('/me/drafts').then((r) => {
-      const d = r.items.find((x) => String(x.id) === did); if (!d) return;
-      setDraftId(d.id); setPickupId(d.pickup_id);
+    const fill = (d) => {
+      if (d.pickup_id) setPickupId(d.pickup_id);
       const n = {}; Object.keys(EMPTY).forEach((k) => (n[k] = d[k] == null || d[k] === '0.000' || d[k] === '0.00' ? EMPTY[k] : String(d[k])));
       setF(n);
       try { const bl = JSON.parse(d.box_list || '[]'); if (bl.length) setBoxes(bl.map((b) => ({ l: String(b.l), b: String(b.b), h: String(b.h), n: String(b.n || 1) }))); else if (+d.length) setBoxes([{ l: String(+d.length), b: String(+d.breadth), h: String(+d.height), n: String(d.boxes || 1) }]); } catch {}
+    };
+    const did = qp('draft');
+    if (did) api('/me/drafts').then((r) => {
+      const d = r.items.find((x) => String(x.id) === did); if (!d) return;
+      setDraftId(d.id); fill(d);
     });
+    const cid = qp('clone');   // re-book an earlier / cancelled shipment with the same details
+    if (cid) api('/me/shipments/' + cid).then((d) => { fill({ ...d, order_ref: '' }); toast('Details copied from order #' + d.order_no + ' — check and book'); }).catch((e) => toast(e.message, true));
   }, []);
   useEffect(() => { if (cfg && !slot) setSlot(cfg.pickup_slots?.[1] || cfg.pickup_slots?.[0] || ''); }, [cfg, slot]);
 

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Chip, Spinner, ErrorBox, Modal, AsyncBtn, toast } from '@/components/ui';
 import LabelButton from '@/components/LabelButton';
 import { RaiseTicket } from '@/components/Tickets';
@@ -54,6 +55,7 @@ export default function ShipmentDetail() {
           <a className="btn btn-outline" href={`/invoice/?shipment=${s.id}`} target="_blank">Shipping invoice</a>
           <a className="btn btn-outline" href={`/buyer-invoice/?id=${s.id}`} target="_blank">Buyer invoice</a>
           <button className="btn btn-outline" onClick={() => setTicket(true)}>Raise ticket</button>
+          <Link href={'/book/?clone=' + s.id} className="btn btn-outline">{s.status === 'cancelled' ? 'Re-book this order' : 'Clone order'}</Link>
           {s.status === 'pickup_pending' && <AsyncBtn className="btn btn-red" confirmText="Cancel this shipment? The amount will be refunded to your wallet." onClick={async () => { await api(`/me/shipments/${s.id}/cancel`, { method: 'POST' }); toast('Cancelled & refunded'); refresh(); load(s.id); }}>Cancel</AsyncBtn>}
         </div>
       </div>

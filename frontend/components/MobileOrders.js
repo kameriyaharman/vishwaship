@@ -144,6 +144,8 @@ export default function MobileOrders({ d, tab, setTab, f, setF, apply, page, set
               <Link href={'/shipment/?id=' + menu.id}><Icon name="search" />Track / details</Link>
               {menu.status !== 'cancelled' && <a href={`/invoice/?shipment=${menu.id}`} target="_blank"><Icon name="receipt" />Download invoice</a>}
               {menu.status !== 'cancelled' && LABEL_FORMATS.map(([k, l]) => <a key={k} href={`/label/?id=${menu.id}&format=${k}`} target="_blank"><Icon name={k === 'thermal' ? 'print' : 'file'} />Label · {l}</a>)}
+              <Link href={'/book/?clone=' + menu.id}><Icon name="refresh" />{menu.status === 'cancelled' ? 'Re-book this order' : 'Clone order'}</Link>
+              {menu.provider === 'shipmozo' && menu.status !== 'cancelled' && <Link href={'/shipment/?id=' + menu.id}><Icon name="print" />Courier label</Link>}
               <button onClick={() => { setTicket(menu); setMenu(null); }}><Icon name="help" />Raise ticket</button>
               {menu.status === 'pickup_pending' && <button className="red" onClick={async () => { if (!confirm('Cancel this shipment? Amount will be refunded to wallet.')) return; try { await api(`/me/shipments/${menu.id}/cancel`, { method: 'POST' }); toast('Cancelled & refunded'); setMenu(null); reload(); } catch (e) { toast(e.message, true); } }}><Icon name="x" />Cancel shipment</button>}
             </div>
