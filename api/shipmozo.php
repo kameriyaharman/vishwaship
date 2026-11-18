@@ -206,14 +206,37 @@ function shipmozo_track(string $awb): ?array {
     return is_array($d) ? $d : null;
 }
 
+/** current status of a Shipmozo tracking response: [raw label, location, time] — top-level status first, else the latest scan */
+function shipmozo_status_of(array $d): array {
+    // top-level status fields only (on the response itself or one wrapper object), never inside scan lists
+    $levels = [$d]; foreach ($d as $v) if (is_array($v) && !array_is_list($v)) $levels[] = $v;
+    foreach (['current_status', 'shipment_status', 'latest_status', 'tracking_status', 'order_status', 'status', 'status_name'] as $k)
+        foreach ($levels as $lv) if (isset($lv[$k]) && is_string($lv[$k]) && map_shipmozo_status($lv[$k]))
+            return [$lv[$k], (string) ($lv['current_location'] ?? $lv['location'] ?? ''), null];
+    $best = null; $bestT = -1;
+    $walk = function ($a) use (&$walk, &$best, &$bestT) {
+        if (!is_array($a)) return;
+        $st = null; foreach (['status', 'scan_status', 'activity', 'remark', 'status_detail', 'scan'] as $k) if (isset($a[$k]) && is_string($a[$k]) && map_shipmozo_status($a[$k])) { $st = $a[$k]; break; }
+        if ($st) {
+            $ts = null; foreach (['date', 'scan_date', 'datetime', 'date_time', 'updated_at', 'time', 'scan_time', 'status_date'] as $k) if (!empty($a[$k]) && is_string($a[$k]) && ($t = strtotime($a[$k]))) { $ts = $t; break; }
+            if ($ts !== null && $ts >= $bestT) { $bestT = $ts; $best = [$st, (string) ($a['location'] ?? $a['scan_location'] ?? $a['city'] ?? ''), date('Y-m-d H:i:s', $ts)]; }
+            elseif ($ts === null && $best === null) $best = [$st, (string) ($a['location'] ?? ''), null];
+        }
+        foreach ($a as $v) if (is_array($v)) $walk($v);
+    };
+    $walk($d);
+    return $best ?? ['', '', null];
+}
+
 function map_shipmozo_status(string $st): ?string {
-    $s = strtolower($st);
+    $s = strtolower(trim($st));
     if ($s === '') return null;
     if (str_contains($s, 'rto') && str_contains($s, 'deliver')) return 'rto_delivered';
-    if (str_contains($s, 'rto') || str_contains($s, 'return')) return 'rto_in_transit';
-    if (str_contains($s, 'out for delivery')) return 'out_for_delivery';
+    if (str_contains($s, 'rto') || str_contains($s, 'return to origin') || str_contains($s, 'returned to')) return 'rto_in_transit';
+    if (str_contains($s, 'out for delivery') || str_contains($s, 'ofd')) return 'out_for_delivery';
+    if (str_contains($s, 'undeliver') || str_contains($s, 'not delivered') || str_contains($s, 'ndr') || str_contains($s, 'failed') || str_contains($s, 'attempt')) return 'ndr';
+    if (str_contains($s, 'lost')) return 'lost';
     if (str_contains($s, 'deliver')) return 'delivered';
-    if (str_contains($s, 'undeliver') || str_contains($s, 'ndr') || str_contains($s, 'failed')) return 'ndr';
     if (str_contains($s, 'cancel')) return 'cancelled';
     if (str_contains($s, 'picked')) return 'picked_up';
     if (str_contains($s, 'transit') || str_contains($s, 'dispatch') || str_contains($s, 'shipped')) return 'in_transit';
