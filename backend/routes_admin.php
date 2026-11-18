@@ -181,6 +181,7 @@ route('GET', '/admin/shipments/(\d+)', function ($id) {
     require_admin('shipments');
     $s = one("SELECT * FROM shipments WHERE id=?", [$id]);
     if (!$s) fail('Not found', 404);
+    $s = live_refresh($s);
     return shipment_detail($s, true);
 });
 route('PUT', '/admin/shipments/(\d+)', function ($id) {

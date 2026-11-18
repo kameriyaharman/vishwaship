@@ -325,7 +325,13 @@ route('GET', '/me/shipments', function () {
         'states' => array_column(all("SELECT DISTINCT to_state FROM shipments WHERE user_id=? AND to_state IS NOT NULL ORDER BY to_state", [$u['id']]), 'to_state')];
 });
 
-route('GET', '/me/shipments/(\d+)', function ($id) { $u = require_customer(); return shipment_detail(my_shipment((int)$id, $u)); });
+route('GET', '/me/shipments/(\d+)', function ($id) { $u = require_customer(); return shipment_detail(live_refresh(my_shipment((int)$id, $u))); });
+/** opening a shipment pulls its live courier status first (Shipmozo) */
+function live_refresh(array $s): array {
+    if ($s['provider'] !== 'shipmozo' || !$s['awb'] || (int) ($s['is_draft'] ?? 0) || in_array($s['status'], ['delivered', 'rto_delivered', 'cancelled', 'lost']) || !shipmozo_on()) return $s;
+    try { if (shipmozo_sync_one($s)) return one("SELECT * FROM shipments WHERE id=?", [$s['id']]); } catch (Throwable $e) {}
+    return $s;
+}
 
 route('POST', '/me/shipments/(\d+)/cancel', function ($id) {
     $u = require_customer();

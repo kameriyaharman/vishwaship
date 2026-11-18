@@ -119,15 +119,34 @@ function apply_status(array $s, string $new, string $label, string $location = '
     }
 }
 
+/** pull one Shipmozo shipment's live status; true when it changed */
+function shipmozo_sync_one(array $s): bool {
+    $d = shipmozo_track((string) $s['awb']); if (!$d) return false;
+    [$st, $loc, $time] = shipmozo_status_of($d);
+    $new = map_shipmozo_status($st);
+    if (!$new || $new === $s['status']) return false;
+    // never move backwards (e.g. an old "pickup" scan after "in transit")
+    $rank = ['pickup_pending' => 0, 'picked_up' => 1, 'in_transit' => 2, 'out_for_delivery' => 3, 'ndr' => 3, 'delivered' => 4, 'rto_in_transit' => 4, 'rto_delivered' => 5, 'lost' => 5, 'cancelled' => 5];
+    if (($rank[$new] ?? 0) < ($rank[$s['status']] ?? 0) && !($s['status'] === 'ndr' && in_array($new, ['in_transit', 'out_for_delivery']))) return false;
+    apply_status($s, $new, $st, $loc, '', $time);
+    return true;
+}
+
+/** automatic tracking: runs after a response at most every 20 minutes, triggered by normal site traffic (no cron needed) */
+function auto_sync_tick(): void {
+    try {
+        $last = (int) setting('last_auto_sync', 0);
+        if (time() - $last < 1200) return;
+        set_setting('last_auto_sync', (string) time());
+        notify_later(function () { @set_time_limit(240); @ignore_user_abort(true); $r = delhivery_sync(); api_log('Tracking sync (auto)', ($r['synced'] ?? 0) . ' shipment(s) updated', 'success'); });
+    } catch (Throwable $e) {}
+}
+
 function delhivery_sync(?array $ids = null): array {
     $n = b2b_sync();
     if (shipmozo_on()) {
-        foreach (all("SELECT * FROM shipments WHERE provider='shipmozo' AND status NOT IN ('delivered','rto_delivered','cancelled') AND awb IS NOT NULL LIMIT 200") as $s) {
-            $d = shipmozo_track((string) $s['awb']); if (!$d) continue;
-            $st = (string) sm_pick($d, ['current_status', 'status', 'shipment_status'], '');
-            $new = map_shipmozo_status($st);
-            if ($new && $new !== $s['status']) { apply_status($s, $new, $st, (string) sm_pick($d, ['current_location', 'location'], ''), ''); $n++; }
-        }
+        foreach (all("SELECT * FROM shipments WHERE provider='shipmozo' AND is_draft=0 AND status NOT IN ('delivered','rto_delivered','cancelled','lost') AND awb IS NOT NULL" . ($ids ? ' AND id IN (' . implode(',', array_map('intval', $ids)) . ')' : '') . " ORDER BY id DESC LIMIT 200") as $s)
+            if (shipmozo_sync_one($s)) $n++;
     }
     if (!delhivery_live()) { api_log('Tracking sync (bulk)', 'Delhivery simulation — nothing to pull', 'success'); return ['synced' => $n, 'note' => ($n ? "$n Shipmozo shipment(s) updated. " : '') . 'Delhivery is in simulation mode: update its statuses manually, or switch Delhivery to live.']; }
     $where = "provider='delhivery' AND status NOT IN ('delivered','rto_delivered','cancelled') AND awb IS NOT NULL";

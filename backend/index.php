@@ -48,6 +48,8 @@ require __DIR__ . '/routes_admin.php';
 require __DIR__ . '/routes_more.php';
 require __DIR__ . '/routes_v7.php';
 
+if (!str_contains($path, 'webhook')) auto_sync_tick();
+
 foreach ($ROUTES as [$m, $re, $fn]) {
     if ($m === $method && preg_match($re, $path, $mm)) {
         array_shift($mm);
